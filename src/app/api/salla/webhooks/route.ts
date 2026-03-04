@@ -1,9 +1,7 @@
 // src/app/api/salla/webhooks/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { kv } from "@vercel/kv";
 
-export const runtime = "nodejs"; // مهم مع kv
-
+import { supabaseAdmin } from "@/app/lib/supabase-admin";
 type SallaWebhookBody = {
   event: string;
   merchant?: number;
@@ -17,34 +15,27 @@ function getHeader(req: NextRequest, name: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    // 1) تحقق من سرّ الـ webhook (Token strategy)
+    // 1️⃣ تحقق من سر webhook
     const sentAuth = getHeader(req, "authorization");
     const expected = process.env.SALLA_WEBHOOK_SECRET || "";
 
-    if (!expected) {
-      return NextResponse.json(
-        { ok: false, error: "Missing SALLA_WEBHOOK_SECRET" },
-        { status: 500 },
-      );
-    }
-
-    if (sentAuth !== expected) {
+    if (!expected || sentAuth !== expected) {
       return NextResponse.json(
         { ok: false, error: "Unauthorized webhook" },
         { status: 401 },
       );
     }
 
-    // 2) اقرأ البودي
     const body = (await req.json()) as SallaWebhookBody;
 
-    // 3) أهم حدث عندنا بالنمط السهل: app.store.authorize
+    // ===============================
+    // 🔥 EVENT: app.store.authorize
+    // ===============================
     if (body.event === "app.store.authorize") {
-      const merchantId = body.merchant;
+      const merchantId = String(body.merchant);
       const accessToken = body.data?.access_token;
       const refreshToken = body.data?.refresh_token;
-      const expires = body.data?.expires; // رقم (timestamp)
-      const scope = body.data?.scope;
+      const expires = body.data?.expires;
 
       if (!merchantId || !accessToken) {
         return NextResponse.json(
@@ -53,33 +44,63 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // خزّن توكن المتجر
-      await kv.hset(`salla:merchant:${merchantId}`, {
-        merchantId: String(merchantId),
-        accessToken,
-        refreshToken: refreshToken || "",
-        expires: String(expires || ""),
-        scope: scope || "",
-        updatedAt: new Date().toISOString(),
+      // 1️⃣ أنشئ tenant جديد
+      const { data: tenant } = await supabaseAdmin
+        .from("tenants")
+        .insert({ name: `Store ${merchantId}` })
+        .select()
+        .single();
+
+      // 2️⃣ أنشئ installation
+      const { data: installation } = await supabaseAdmin
+        .from("salla_installations")
+        .insert({
+          tenant_id: tenant.id,
+          merchant_id: merchantId,
+          status: "active",
+        })
+        .select()
+        .single();
+
+      // 3️⃣ خزّن التوكن
+      await supabaseAdmin.from("salla_tokens").upsert({
+        installation_id: installation.id,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        access_expires_at: expires
+          ? new Date(expires * 1000).toISOString()
+          : null,
       });
 
       return NextResponse.json({ ok: true });
     }
 
-    // 4) إذا انحذف التطبيق من المتجر: امسح بياناته
+    // ===============================
+    // 🔥 EVENT: app.uninstalled
+    // ===============================
     if (body.event === "app.uninstalled") {
-      const merchantId = body.merchant;
-      if (merchantId) {
-        await kv.del(`salla:merchant:${merchantId}`);
+      const merchantId = String(body.merchant);
+
+      const { data: installation } = await supabaseAdmin
+        .from("salla_installations")
+        .select("id")
+        .eq("merchant_id", merchantId)
+        .single();
+
+      if (installation) {
+        await supabaseAdmin
+          .from("salla_installations")
+          .update({ status: "revoked" })
+          .eq("id", installation.id);
       }
+
       return NextResponse.json({ ok: true });
     }
 
-    // باقي الأحداث نعدّيها الآن
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Webhook error" },
+      { ok: false, error: error.message },
       { status: 500 },
     );
   }
