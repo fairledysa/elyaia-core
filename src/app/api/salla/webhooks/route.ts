@@ -115,6 +115,7 @@ function toExpiresAt(expires: any) {
   return new Date(n * 1000).toISOString();
 }
 
+// ✅ best-effort log (لا يكسر webhook لو فشل)
 async function logWebhookEvent(
   sb: ReturnType<typeof supabaseAdmin>,
   installationId: string | null,
@@ -125,16 +126,20 @@ async function logWebhookEvent(
 ) {
   if (!installationId) return;
 
-  await sb.from("webhook_events").insert({
-    installation_id: installationId,
-    event_type: body.event,
-    event_id: body.data?.id ? String(body.data.id) : null,
-    payload: body as any,
-    received_at: new Date().toISOString(),
-    processed_at: processedAt ?? null,
-    status,
-    // error_message: errorMessage ?? null,
-  });
+  try {
+    await sb.from("webhook_events").insert({
+      installation_id: installationId,
+      event_type: body.event,
+      event_id: body.data?.id ? String(body.data.id) : null,
+      payload: body as any,
+      received_at: new Date().toISOString(),
+      processed_at: processedAt ?? null,
+      status,
+      // error_message: errorMessage ?? null,
+    });
+  } catch {
+    // تجاهل
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -233,7 +238,7 @@ export async function POST(req: NextRequest) {
 
     await logWebhookEvent(sb, installationId, body, "pending", null);
 
-    // B) upsert tokens
+    // B) upsert tokens (هذا أهم شيء لازم يتم دائمًا)
     const tokUp = await sb.from("salla_tokens").upsert(
       {
         installation_id: installationId,
@@ -251,20 +256,17 @@ export async function POST(req: NextRequest) {
     );
     if (tokUp.error) throw tokUp.error;
 
-    // ✅ C) أهم تعديل: إذا عندنا owner مرتبط بالـ tenant خلاص نوقف هنا (لا إيميلات ولا invites)
+    // C) إذا فيه owner مرتبط مسبقاً خلاص لا نرسل دعوات ولا نجيب ايميل
     const owner = await sb
       .from("tenant_members")
       .select("user_id, role")
       .eq("tenant_id", tenantId)
       .eq("role", "owner")
-      .limit(1)
       .maybeSingle();
 
     if (owner.error) throw owner.error;
 
-    // إذا فيه owner موجود = هذا هو “المثبت التطبيق”، لا نحتاج نتبع ايميل سلة
     if (owner.data?.user_id) {
-      // حدث حالة installation فقط
       const updActive = await sb
         .from("salla_installations")
         .update({ status: "active", updated_at: new Date().toISOString() })
@@ -289,12 +291,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // D) لو ما فيه owner (أول مرة) فقط هنا نحاول نجيب ايميل ونربط
+    // D) أول مرة فقط: نحاول نجيب email/name من سلة
     let storeUser: { email: string; name: string | null } | null = null;
     try {
       storeUser = await getBestEmailFromSalla(String(accessToken));
     } catch (e: any) {
-      // ما نكسر authorize بسبب الايميل
+      // لا نكسر authorize بسبب الإيميل
+      const updActive = await sb
+        .from("salla_installations")
+        .update({ status: "active", updated_at: new Date().toISOString() })
+        .eq("id", installationId);
+      if (updActive.error) throw updActive.error;
+
       await logWebhookEvent(
         sb,
         installationId,
@@ -304,8 +312,29 @@ export async function POST(req: NextRequest) {
       );
       return NextResponse.json({
         ok: true,
+        merchantId: merchantIdStr,
+        tenantId,
+        installationId,
         warning: "tokens_saved_but_no_email",
+        detail: e?.message ?? null,
       });
+    }
+
+    // تحديث store_name لو قدرنا
+    if (storeUser?.name) {
+      await sb
+        .from("salla_installations")
+        .update({
+          store_name: storeUser.name,
+          status: "active",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", installationId);
+    } else {
+      await sb
+        .from("salla_installations")
+        .update({ status: "active", updated_at: new Date().toISOString() })
+        .eq("id", installationId);
     }
 
     if (!storeUser?.email) {
@@ -318,34 +347,46 @@ export async function POST(req: NextRequest) {
       );
       return NextResponse.json({
         ok: true,
+        merchantId: merchantIdStr,
+        tenantId,
+        installationId,
         warning: "tokens_saved_but_no_email",
       });
     }
 
     const email = storeUser.email;
 
-    // 1) هل موجود؟
+    // E) find or invite (لكن بدون ما نطيح لو invite فشل)
     let user = await findUserByEmail(sb, email);
 
-    // 2) invite مرة واحدة فقط (ولو فشل ما نكسر)
     if (!user) {
       const invited = await sb.auth.admin.inviteUserByEmail(email);
-      user = invited.data.user ?? (await findUserByEmail(sb, email));
+
+      if (invited.error) {
+        // ✅ مهم: لا نرمي خطأ هنا (rate limit / already invited / etc)
+        console.log("[salla:webhook] invite skipped", invited.error.message);
+      }
+
+      user = invited.data?.user ?? (await findUserByEmail(sb, email));
     }
 
+    // إذا لسا ما لقيناه: لا نرجع 500 (عشان سلة ما تعيد)
     if (!user) {
       await logWebhookEvent(
         sb,
         installationId,
         body,
-        "error",
+        "processed",
         new Date().toISOString(),
-        "user_create_or_find_failed",
       );
-      return NextResponse.json(
-        { ok: false, error: `Could not find/create user for ${email}` },
-        { status: 500 },
-      );
+      return NextResponse.json({
+        ok: true,
+        merchantId: merchantIdStr,
+        tenantId,
+        installationId,
+        warning: "user_not_linked_yet",
+        email,
+      });
     }
 
     const userId = user.id;
@@ -374,7 +415,6 @@ export async function POST(req: NextRequest) {
     );
     if (tmUp.error) throw tmUp.error;
 
-    // done
     await logWebhookEvent(
       sb,
       installationId,
@@ -389,9 +429,11 @@ export async function POST(req: NextRequest) {
       tenantId,
       installationId,
       email,
+      linkedOwnerUserId: userId,
     });
   } catch (e: any) {
     console.error("[salla:webhook] error", e);
+    // ✅ هذا فقط للأخطاء الحقيقية (ENV/DB/Unauthorized)
     return NextResponse.json(
       { ok: false, error: e?.message || "Webhook error" },
       { status: 500 },
