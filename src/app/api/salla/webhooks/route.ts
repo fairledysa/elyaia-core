@@ -1,11 +1,12 @@
 // src/app/api/salla/webhooks/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/app/lib/supabase-admin";
+
 type SallaWebhookBody = {
   event: string;
   merchant?: number;
-  created_at?: string;
   data?: any;
 };
 
@@ -15,7 +16,9 @@ function getHeader(req: NextRequest, name: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    // 1️⃣ تحقق من سر webhook
+    // =========================================
+    // 1️⃣ تحقق من webhook secret
+    // =========================================
     const sentAuth = getHeader(req, "authorization");
     const expected = process.env.SALLA_WEBHOOK_SECRET || "";
 
@@ -28,9 +31,9 @@ export async function POST(req: NextRequest) {
 
     const body = (await req.json()) as SallaWebhookBody;
 
-    // ===============================
-    // 🔥 EVENT: app.store.authorize
-    // ===============================
+    // =========================================
+    // 2️⃣ app.store.authorize
+    // =========================================
     if (body.event === "app.store.authorize") {
       const merchantId = String(body.merchant);
       const accessToken = body.data?.access_token;
@@ -44,63 +47,90 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // 1️⃣ أنشئ tenant جديد
-      const { data: tenant } = await supabaseAdmin
-        .from("tenants")
-        .insert({ name: `Store ${merchantId}` })
-        .select()
-        .single();
-
-      // 2️⃣ أنشئ installation
-      const { data: installation } = await supabaseAdmin
+      // 🔍 هل المتجر موجود مسبقًا؟
+      const { data: existingInstallation } = await supabaseAdmin
         .from("salla_installations")
-        .insert({
-          tenant_id: tenant.id,
-          merchant_id: merchantId,
-          status: "active",
-        })
-        .select()
-        .single();
+        .select("id, tenant_id")
+        .eq("merchant_id", merchantId)
+        .maybeSingle();
 
-      // 3️⃣ خزّن التوكن
-      await supabaseAdmin.from("salla_tokens").upsert({
-        installation_id: installation.id,
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        access_expires_at: expires
-          ? new Date(expires * 1000).toISOString()
-          : null,
-      });
+      let installationId: string;
+      let tenantId: string;
+
+      if (existingInstallation) {
+        // ✅ المتجر موجود → نستخدمه
+        installationId = existingInstallation.id;
+        tenantId = existingInstallation.tenant_id;
+      } else {
+        // 🆕 متجر جديد → أنشئ tenant
+        const { data: newTenant, error: tenantError } = await supabaseAdmin
+          .from("tenants")
+          .insert({ name: `Store ${merchantId}` })
+          .select()
+          .single();
+
+        if (tenantError || !newTenant) {
+          throw tenantError;
+        }
+
+        tenantId = newTenant.id;
+
+        // أنشئ installation
+        const { data: newInstallation, error: installError } =
+          await supabaseAdmin
+            .from("salla_installations")
+            .insert({
+              tenant_id: tenantId,
+              merchant_id: merchantId,
+              status: "active",
+            })
+            .select()
+            .single();
+
+        if (installError || !newInstallation) {
+          throw installError;
+        }
+
+        installationId = newInstallation.id;
+      }
+
+      // 🔐 خزّن أو حدّث التوكن
+      const { error: tokenError } = await supabaseAdmin
+        .from("salla_tokens")
+        .upsert({
+          installation_id: installationId,
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          access_expires_at: expires
+            ? new Date(expires * 1000).toISOString()
+            : null,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (tokenError) throw tokenError;
 
       return NextResponse.json({ ok: true });
     }
 
-    // ===============================
-    // 🔥 EVENT: app.uninstalled
-    // ===============================
+    // =========================================
+    // 3️⃣ app.uninstalled
+    // =========================================
     if (body.event === "app.uninstalled") {
       const merchantId = String(body.merchant);
 
-      const { data: installation } = await supabaseAdmin
+      await supabaseAdmin
         .from("salla_installations")
-        .select("id")
-        .eq("merchant_id", merchantId)
-        .single();
-
-      if (installation) {
-        await supabaseAdmin
-          .from("salla_installations")
-          .update({ status: "revoked" })
-          .eq("id", installation.id);
-      }
+        .update({ status: "revoked" })
+        .eq("merchant_id", merchantId);
 
       return NextResponse.json({ ok: true });
     }
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
+    console.error("WEBHOOK ERROR:", error);
     return NextResponse.json(
-      { ok: false, error: error.message },
+      { ok: false, error: error?.message },
       { status: 500 },
     );
   }
