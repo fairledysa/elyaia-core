@@ -88,6 +88,7 @@ async function getBestEmailFromSalla(accessToken: string) {
 
   if (!email)
     throw new Error("Could not read email from Salla user/info response");
+
   return { email: String(email), name: name ? String(name) : null };
 }
 
@@ -129,8 +130,6 @@ async function logWebhookEvent(
   processedAt?: string | null,
   errorMessage?: string | null,
 ) {
-  // جدول webhook_events عندك يحتاج installation_id NOT NULL
-  // فلو ما عندنا installationId (مثلاً قبل ما ننشئه) نتجاهل التسجيل
   if (!installationId) return;
 
   await sb.from("webhook_events").insert({
@@ -141,8 +140,7 @@ async function logWebhookEvent(
     received_at: new Date().toISOString(),
     processed_at: processedAt ?? null,
     status,
-    // إذا ما عندك عمود error_message تجاهله
-    // error_message: errorMessage ?? null,
+    // error_message: errorMessage ?? null, // إذا عندك عمود لاحقًا
   });
 }
 
@@ -190,7 +188,7 @@ export async function POST(req: NextRequest) {
     const merchantId = body.merchant;
     const accessToken = body.data?.access_token;
     const refreshToken = body.data?.refresh_token;
-    const expires = body.data?.expires; // epoch seconds غالباً
+    const expires = body.data?.expires;
     const scope = body.data?.scope;
 
     if (!merchantId || !accessToken) {
@@ -203,7 +201,6 @@ export async function POST(req: NextRequest) {
     const merchantIdStr = String(merchantId);
 
     // A) installation upsert (لا نكرر tenant)
-    // 1) إذا موجودة: خذها
     const instExisting = await sb
       .from("salla_installations")
       .select("id, tenant_id, merchant_id, store_name, status")
@@ -219,7 +216,6 @@ export async function POST(req: NextRequest) {
       tenantId = instExisting.data.tenant_id;
       installationId = instExisting.data.id;
     } else {
-      // 2) create tenant + installation
       const tenantName = `Store ${merchantIdStr}`;
 
       const tIns = await sb
@@ -246,7 +242,7 @@ export async function POST(req: NextRequest) {
       installationId = instIns.data.id as string;
     }
 
-    // (اختياري) سجل webhook event كـ pending قبل المعالجة
+    // سجل webhook event كـ pending
     await logWebhookEvent(sb, installationId, body, "pending", null);
 
     // B) upsert tokens
@@ -275,8 +271,6 @@ export async function POST(req: NextRequest) {
       console.log("[salla:webhook] could not fetch store user info now", {
         message: e?.message,
       });
-      // ما نكسر authorize بسبب الإيميل — التوكن انحفظ خلاص
-      // نخلي owner linking لاحقاً من شاشة داخلية لو احتجنا.
     }
 
     // D) تحديث اسم المتجر إذا قدرنا
@@ -298,7 +292,7 @@ export async function POST(req: NextRequest) {
       if (updActive.error) throw updActive.error;
     }
 
-    // E) إذا ما عندنا email — نوقف هنا (بدون invites/ربط)
+    // E) إذا ما عندنا email — نوقف هنا
     if (!storeUser?.email) {
       await logWebhookEvent(
         sb,
@@ -313,38 +307,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // F) user linking (بدون spam)
-    const email = storeUser.email;
+    // F) user linking (✅ بدون invite نهائياً)
+    const email = String(storeUser.email).toLowerCase();
 
     // 1) هل موجود؟
     let user = await findUserByEmail(sb, email);
 
-    // 2) إذا غير موجود -> invite مرة واحدة فقط
+    // 2) إذا غير موجود -> create user (بدون إرسال ايميل)
     if (!user) {
-      const invited = await sb.auth.admin.inviteUserByEmail(email);
-      if (invited.error) {
-        // إذا فشل invite لأي سبب — نعيد محاولة find
-        console.log("[salla:webhook] invite error", {
-          message: invited.error.message,
-        });
-      }
-      user = invited.data.user ?? (await findUserByEmail(sb, email));
-    }
-
-    if (!user) {
-      // ما نكسر الربط بالكامل — لكن نبلغ بالخطأ
-      await logWebhookEvent(
-        sb,
-        installationId,
-        body,
-        "error",
-        new Date().toISOString(),
-        "user_create_or_find_failed",
-      );
-      return NextResponse.json(
-        { ok: false, error: `Could not find/create user for ${email}` },
-        { status: 500 },
-      );
+      const created = await sb.auth.admin.createUser({
+        email,
+        email_confirm: true,
+      });
+      if (created.error) throw created.error;
+      user = created.data.user;
     }
 
     const userId = user.id;
