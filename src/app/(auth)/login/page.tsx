@@ -1,108 +1,48 @@
-// FILE: src/app/(auth)/login/page.tsx
 "use client";
 
-import { useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import Link from "next/link";
+
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
+import { Icons } from "@/components/icons";
+import { UserAuthForm } from "@/components/user-auth-form";
 
 export default function LoginPage() {
-  const sb = supabaseBrowser();
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  async function send() {
-    setLoading(true);
-    setMsg(null);
-
-    // 1) تحقق أنه مربوط
-    const r = await fetch("/api/auth/check-linked", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-
-    const j = await r.json().catch(() => ({}));
-
-    if (!r.ok) {
-      setLoading(false);
-      setMsg("هذا الإيميل غير مربوط بمتجر. ثبّت التطبيق أولاً.");
-      return;
-    }
-
-    // 2) أرسل Magic Link (هذا اللي يرسل فعليًا)
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/callback` },
-    });
-
-    setLoading(false);
-    setMsg(error ? error.message : "تم إرسال رابط الدخول على الإيميل ✅");
-  }
-
   return (
-    <main style={{ maxWidth: 420, margin: "60px auto", padding: 16 }} dir="rtl">
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>
-        تسجيل الدخول
-      </h1>
-
-      <label style={{ display: "block", marginBottom: 6 }}>الإيميل</label>
-      <input
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="you@domain.com"
-        style={{
-          width: "100%",
-          padding: 10,
-          borderRadius: 10,
-          marginBottom: 12,
-          border: "1px solid #ddd",
-        }}
-      />
-
-      <button
-        disabled={loading || !email}
-        onClick={send}
-        style={{
-          width: "100%",
-          padding: 12,
-          borderRadius: 12,
-          border: 0,
-          background: "#0b5",
-          color: "#001",
-          fontWeight: 700,
-        }}
+    <div
+      className="container flex h-screen w-screen flex-col items-center justify-center"
+      dir="rtl"
+    >
+      <Link
+        href="/"
+        className={cn(
+          buttonVariants({ variant: "ghost" }),
+          "absolute right-4 top-4 md:right-8 md:top-8",
+        )}
       >
-        {loading ? "..." : "أرسل رابط الدخول"}
-      </button>
-      <button
-        onClick={async () => {
-          const r = await fetch("/api/dev/login", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ email }),
-          });
-          const j = await r.json();
-          if (!j.ok) {
-            alert(j.error || "failed");
-            return;
-          }
-          window.location.href = j.action_link; // ✅ يدخل مباشرة بدون إيميل
-        }}
-        style={{
-          width: "100%",
-          padding: 12,
-          borderRadius: 12,
-          border: "1px solid #333",
-          background: "#111",
-          color: "#fff",
-          fontWeight: 700,
-          cursor: "pointer",
-          marginTop: 10,
-        }}
-      >
-        Dev Login (بدون إيميل)
-      </button>
-      {msg && <div style={{ marginTop: 12, fontSize: 13 }}>{msg}</div>}
-    </main>
+        <span className="flex items-center gap-2">
+          <Icons.chevronLeft className="h-4 w-4" />
+          رجوع
+        </span>
+      </Link>
+
+      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[380px]">
+        <div className="flex flex-col space-y-2 text-center">
+          <Icons.logo className="mx-auto h-7 w-7" />
+          <h1 className="text-2xl font-semibold tracking-tight">
+            تسجيل الدخول
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            أدخل بريدك الإلكتروني وسنرسل لك رابط دخول
+          </p>
+        </div>
+
+        <UserAuthForm />
+
+        <p className="px-8 text-center text-sm text-muted-foreground">
+          بتسجيل الدخول أنت توافق على الشروط وسياسة الخصوصية
+        </p>
+      </div>
+    </div>
   );
 }

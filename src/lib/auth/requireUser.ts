@@ -12,28 +12,30 @@ type CookieToSet = {
 export async function requireUser() {
   const cookieStore = await cookies();
 
-  const sb = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet: CookieToSet[]) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+  const sb = createServerClient(url, anon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet: CookieToSet[]) {
+        // ✅ مهم: في Server Components Next يمنع تعديل cookies
+        // فنحاول، وإذا منعها Next نتجاهل عشان ما يطيح /dashboard
+        try {
           cookiesToSet.forEach(({ name, value, options }) => {
             cookieStore.set(name, value, options);
           });
-        },
+        } catch {
+          // ignore: cannot set cookies in Server Component
+        }
       },
     },
-  );
+  });
 
   const { data, error } = await sb.auth.getUser();
-
-  if (error || !data.user) {
-    redirect("/login");
-  }
+  if (error || !data?.user) redirect("/login");
 
   return { sb, user: data.user };
 }
