@@ -1,5 +1,5 @@
 // FILE: src/app/(dashboard)/layout.tsx
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -27,14 +27,20 @@ export default async function DashboardLayout({
   const { sb, user } = await requireUser();
   if (!user) return notFound();
 
-  await requireTenant({ sb, userId: user.id });
+  const tenant = await requireTenant({ sb, userId: user.id });
+  if (!tenant?.tenantId) return notFound();
+
+  const allowedRoles = ["owner", "admin", "manager"];
+
+  if (!allowedRoles.includes(String(tenant.role || ""))) {
+    redirect("/production");
+  }
 
   return (
     <div dir="rtl" className="min-h-screen w-full overflow-x-hidden">
       <SidebarProvider>
         <AppSidebar user={{ email: user.email }} />
 
-        {/* ✅ أهم سطرين: امنع القص + خلي المحتوى يتمدد */}
         <SidebarInset className="min-w-0 flex-1">
           <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-background">
             <div className="flex w-full min-w-0 items-center gap-2 px-4">

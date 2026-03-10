@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
@@ -37,7 +38,15 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <UserAuthForm />
+        <Suspense
+          fallback={
+            <div className="rounded-lg border p-4 text-center text-sm text-muted-foreground">
+              جاري تحميل نموذج الدخول...
+            </div>
+          }
+        >
+          <UserAuthForm />
+        </Suspense>
 
         <p className="px-8 text-center text-sm text-muted-foreground">
           بتسجيل الدخول أنت توافق على الشروط وسياسة الخصوصية

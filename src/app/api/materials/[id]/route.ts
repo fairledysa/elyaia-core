@@ -14,31 +14,33 @@ export async function PATCH(
 
   const sb = await createSupabaseServerClient();
   const { data: u } = await sb.auth.getUser();
-  if (!u?.user)
+  if (!u?.user) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 },
     );
+  }
 
   const { tenantId, role } = await requireTenant({ userId: u.user.id, sb });
-  if (role !== "owner")
+  if (role !== "owner") {
     return NextResponse.json(
       { ok: false, error: "Forbidden" },
       { status: 403 },
     );
+  }
 
   const body = await req.json().catch(() => ({}));
-  const patch: any = {};
+  const patch: Record<string, unknown> = {};
 
   if (body?.name != null) patch.name = String(body.name).trim();
   if (body?.unit != null) patch.unit = String(body.unit || "m").trim() || "m";
   if (body?.unit_cost != null) patch.unit_cost = Number(body.unit_cost);
-
-  if (body?.on_hand != null) patch.on_hand = Number(body.on_hand);
-  if (body?.reorder_level != null)
+  if (body?.reorder_level != null) {
     patch.reorder_level = Number(body.reorder_level);
-  if (body?.allow_negative != null)
+  }
+  if (body?.allow_negative != null) {
     patch.allow_negative = !!body.allow_negative;
+  }
 
   const admin = createSupabaseAdminClient();
 
@@ -50,11 +52,13 @@ export async function PATCH(
     .select("id,name,unit,on_hand,unit_cost,reorder_level,allow_negative")
     .single();
 
-  if (up.error)
+  if (up.error) {
     return NextResponse.json(
       { ok: false, error: up.error.message },
       { status: 500 },
     );
+  }
+
   return NextResponse.json({ ok: true, item: up.data });
 }
 
@@ -66,18 +70,20 @@ export async function DELETE(
 
   const sb = await createSupabaseServerClient();
   const { data: u } = await sb.auth.getUser();
-  if (!u?.user)
+  if (!u?.user) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 },
     );
+  }
 
   const { tenantId, role } = await requireTenant({ userId: u.user.id, sb });
-  if (role !== "owner")
+  if (role !== "owner") {
     return NextResponse.json(
       { ok: false, error: "Forbidden" },
       { status: 403 },
     );
+  }
 
   const admin = createSupabaseAdminClient();
 
@@ -86,10 +92,13 @@ export async function DELETE(
     .delete()
     .eq("tenant_id", tenantId)
     .eq("id", id);
-  if (del.error)
+
+  if (del.error) {
     return NextResponse.json(
       { ok: false, error: del.error.message },
       { status: 500 },
     );
+  }
+
   return NextResponse.json({ ok: true });
 }

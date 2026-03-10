@@ -15,9 +15,20 @@ import {
 } from "@/components/ui/sidebar";
 
 import Link from "next/link";
-import { Home, Package, ShoppingCart, Settings, Table } from "lucide-react";
-import { NavUser } from "@/components/nav-user";
+import {
+  Home,
+  Package,
+  ShoppingCart,
+  Settings,
+  Table,
+  Users,
+  Printer,
+  Wallet,
+  BarChart3,
+} from "lucide-react";
 
+import { NavUser } from "@/components/nav-user";
+import { Bell } from "lucide-react";
 type Props = {
   user?: { email?: string | null; name?: string | null };
 };
@@ -32,8 +43,10 @@ export function AppSidebar({ user }: Props) {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>القائمة</SidebarGroupLabel>
+
           <SidebarGroupContent>
             <SidebarMenu>
+              {/* الرئيسية */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/dashboard" className="gap-2">
@@ -43,6 +56,7 @@ export function AppSidebar({ user }: Props) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
+              {/* الطلبات */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/dashboard/orders" className="gap-2">
@@ -52,6 +66,20 @@ export function AppSidebar({ user }: Props) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
+              {/* دفعات الطباعة */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link
+                    href="/dashboard/orders/print-batches"
+                    className="gap-2"
+                  >
+                    <Printer className="h-4 w-4" />
+                    دفعات الطباعة
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* المنتجات */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/dashboard/products" className="gap-2">
@@ -61,6 +89,7 @@ export function AppSidebar({ user }: Props) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
+              {/* Product Matrix */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/dashboard/products/matrix" className="gap-2">
@@ -70,6 +99,44 @@ export function AppSidebar({ user }: Props) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
+              {/* الموظفين */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/dashboard/employees" className="gap-2">
+                    <Users className="h-4 w-4" />
+                    الموظفين
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* المالية */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/dashboard/finance" className="gap-2">
+                    <Wallet className="h-4 w-4" />
+                    المالية
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/dashboard/notifications" className="gap-2">
+                    <Bell className="h-4 w-4" />
+                    التنبيهات
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {/* الأداء */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/dashboard/performance" className="gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    الأداء
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* الإعدادات */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/dashboard/settings" className="gap-2">

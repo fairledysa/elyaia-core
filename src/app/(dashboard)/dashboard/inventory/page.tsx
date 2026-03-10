@@ -2,7 +2,6 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/requireUser";
 import { requireTenant } from "@/lib/tenant/requireTenant";
-
 import InventoryClient from "@/components/inventory/inventory-client";
 
 export default async function Page() {
