@@ -11,7 +11,7 @@ import { UserAuthForm } from "@/components/user-auth-form";
 export default function LoginPage() {
   return (
     <div
-      className="container flex h-screen w-screen flex-col items-center justify-center"
+      className="  flex h-screen w-screen flex-col items-center justify-center"
       dir="rtl"
     >
       <Link
@@ -34,7 +34,7 @@ export default function LoginPage() {
             تسجيل الدخول
           </h1>
           <p className="text-sm text-muted-foreground">
-            أدخل بريدك الإلكتروني وسنرسل لك رابط دخول
+            أدخل بريدك الإلكتروني وسنرسل لك رمز تحقق
           </p>
         </div>
 
