@@ -10,6 +10,10 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+function hasOwn(body: Record<string, any>, key: string) {
+  return Object.prototype.hasOwnProperty.call(body, key);
+}
+
 export async function PATCH(req: Request, ctx: RouteContext) {
   const sb = await createSupabaseServerClient();
   const {
@@ -33,13 +37,27 @@ export async function PATCH(req: Request, ctx: RouteContext) {
   }
 
   const { id } = await ctx.params;
-  const body = await req.json().catch(() => ({}));
-
+  const body = (await req.json().catch(() => ({}))) as Record<string, any>;
   const admin = createSupabaseAdminClient();
 
   const existingEmployee = await admin
     .from("employees")
-    .select("id, user_id, tenant_id")
+    .select(
+      `
+        id,
+        user_id,
+        tenant_id,
+        stage_id,
+        job_title,
+        pay_type,
+        base_salary,
+        has_monthly_target,
+        monthly_target,
+        has_over_target_bonus,
+        bonus_per_extra_piece,
+        active
+      `,
+    )
     .eq("tenant_id", tenantId)
     .eq("id", id)
     .maybeSingle();
@@ -58,32 +76,129 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     );
   }
 
-  const userId = existingEmployee.data.user_id;
+  const employee = existingEmployee.data;
+  const userId = employee.user_id;
 
-  const full_name = String(body?.full_name || "").trim();
-  const email = String(body?.email || "")
-    .trim()
-    .toLowerCase();
-  const phone = String(body?.phone || "").trim() || null;
-  const stage_id = String(body?.stage_id || "").trim();
-  const pay_type = String(body?.pay_type || "").trim() || "salary";
-  const base_salary = Number(body?.base_salary ?? 0);
-  const has_monthly_target = Boolean(body?.has_monthly_target ?? false);
+  const profileQ = await admin
+    .from("profiles")
+    .select("id, full_name, phone, email")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileQ.error) {
+    return NextResponse.json(
+      { ok: false, error: profileQ.error.message },
+      { status: 500 },
+    );
+  }
+
+  const currentProfile = profileQ.data || {
+    id: userId,
+    full_name: null,
+    phone: null,
+    email: null,
+  };
+
+  const isOnlyActiveUpdate =
+    hasOwn(body, "active") &&
+    !hasOwn(body, "full_name") &&
+    !hasOwn(body, "email") &&
+    !hasOwn(body, "phone") &&
+    !hasOwn(body, "password") &&
+    !hasOwn(body, "stage_id") &&
+    !hasOwn(body, "pay_type") &&
+    !hasOwn(body, "base_salary") &&
+    !hasOwn(body, "has_monthly_target") &&
+    !hasOwn(body, "monthly_target") &&
+    !hasOwn(body, "has_over_target_bonus") &&
+    !hasOwn(body, "bonus_per_extra_piece");
+
+  if (isOnlyActiveUpdate) {
+    const employeeUpdate = await admin
+      .from("employees")
+      .update({
+        active: Boolean(body.active),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (employeeUpdate.error) {
+      return NextResponse.json(
+        { ok: false, error: employeeUpdate.error.message },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      item: employeeUpdate.data,
+    });
+  }
+
+  const full_name = hasOwn(body, "full_name")
+    ? String(body.full_name || "").trim()
+    : String(currentProfile.full_name || "").trim();
+
+  const email = hasOwn(body, "email")
+    ? String(body.email || "")
+        .trim()
+        .toLowerCase()
+    : String(currentProfile.email || "")
+        .trim()
+        .toLowerCase();
+
+  const phone = hasOwn(body, "phone")
+    ? String(body.phone || "").trim() || null
+    : currentProfile.phone || null;
+
+  const pay_type = hasOwn(body, "pay_type")
+    ? String(body.pay_type || "").trim()
+    : employee.pay_type || "salary";
+
+  const active = hasOwn(body, "active")
+    ? Boolean(body.active)
+    : Boolean(employee.active);
+
+  const has_monthly_target = hasOwn(body, "has_monthly_target")
+    ? Boolean(body.has_monthly_target)
+    : Boolean(employee.has_monthly_target);
+
   const monthly_target =
     has_monthly_target &&
-    body?.monthly_target !== "" &&
-    body?.monthly_target != null
+    hasOwn(body, "monthly_target") &&
+    body.monthly_target !== "" &&
+    body.monthly_target != null
       ? Number(body.monthly_target)
-      : null;
-  const has_over_target_bonus = Boolean(body?.has_over_target_bonus ?? false);
+      : has_monthly_target
+        ? employee.monthly_target
+        : null;
+
+  const has_over_target_bonus = has_monthly_target
+    ? hasOwn(body, "has_over_target_bonus")
+      ? Boolean(body.has_over_target_bonus)
+      : Boolean(employee.has_over_target_bonus)
+    : false;
+
   const bonus_per_extra_piece =
     has_over_target_bonus &&
-    body?.bonus_per_extra_piece !== "" &&
-    body?.bonus_per_extra_piece != null
+    hasOwn(body, "bonus_per_extra_piece") &&
+    body.bonus_per_extra_piece !== "" &&
+    body.bonus_per_extra_piece != null
       ? Number(body.bonus_per_extra_piece)
-      : 0;
-  const active = body?.active === undefined ? true : Boolean(body.active);
-  const password = String(body?.password || "").trim();
+      : has_over_target_bonus
+        ? Number(employee.bonus_per_extra_piece || 0)
+        : 0;
+
+  const base_salary = hasOwn(body, "base_salary")
+    ? Number(body.base_salary ?? 0)
+    : Number(employee.base_salary ?? 0);
+
+  const password = hasOwn(body, "password")
+    ? String(body.password || "").trim()
+    : "";
 
   if (!full_name) {
     return NextResponse.json(
@@ -99,13 +214,6 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     );
   }
 
-  if (!stage_id) {
-    return NextResponse.json(
-      { ok: false, error: "Missing stage_id" },
-      { status: 400 },
-    );
-  }
-
   if (!["salary", "piece"].includes(pay_type)) {
     return NextResponse.json(
       { ok: false, error: "Invalid pay_type" },
@@ -113,29 +221,55 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     );
   }
 
-  const stageCheck = await admin
-    .from("stages")
-    .select("id, name")
-    .eq("tenant_id", tenantId)
-    .eq("id", stage_id)
-    .eq("archived", false)
-    .maybeSingle();
+  let stage_id = employee.stage_id;
+  let job_title = employee.job_title;
 
-  if (stageCheck.error) {
-    return NextResponse.json(
-      { ok: false, error: stageCheck.error.message },
-      { status: 500 },
-    );
+  if (hasOwn(body, "stage_id")) {
+    const requestedStageId = String(body.stage_id || "").trim();
+
+    if (!requestedStageId) {
+      return NextResponse.json(
+        { ok: false, error: "Missing stage_id" },
+        { status: 400 },
+      );
+    }
+
+    // اسمح بحفظ نفس المرحلة القديمة كما هي حتى لو كانت مؤرشفة أو غير موجودة ضمن القائمة الحالية
+    // وتحقق فقط إذا المستخدم اختار مرحلة جديدة مختلفة
+    if (requestedStageId !== employee.stage_id) {
+      const stageCheck = await admin
+        .from("stages")
+        .select("id, name")
+        .eq("tenant_id", tenantId)
+        .eq("id", requestedStageId)
+        .eq("archived", false)
+        .maybeSingle();
+
+      if (stageCheck.error) {
+        return NextResponse.json(
+          { ok: false, error: stageCheck.error.message },
+          { status: 500 },
+        );
+      }
+
+      if (!stageCheck.data) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid stage_id" },
+          { status: 400 },
+        );
+      }
+
+      stage_id = stageCheck.data.id;
+      job_title = stageCheck.data.name || null;
+    }
   }
 
-  if (!stageCheck.data) {
+  if (!stage_id) {
     return NextResponse.json(
-      { ok: false, error: "Invalid stage_id" },
+      { ok: false, error: "Missing stage_id" },
       { status: 400 },
     );
   }
-
-  const job_title = stageCheck.data.name || null;
 
   const profileEmailCheck = await admin
     .from("profiles")

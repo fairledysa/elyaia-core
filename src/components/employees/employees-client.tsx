@@ -14,6 +14,11 @@ import {
   Trash2,
   Users,
   X,
+  Briefcase,
+  Wallet,
+  Target,
+  UserCog,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -95,13 +100,49 @@ const EMPTY_FORM = {
   active: true,
 };
 
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  subtitle,
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+  subtitle?: string;
+}) {
+  return (
+    <Card className="rounded-3xl border-border/70 shadow-sm">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm text-muted-foreground">{title}</div>
+            <div className="mt-2 text-3xl font-black tracking-tight">
+              {value}
+            </div>
+            {subtitle ? (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {subtitle}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function EmployeesClient() {
   const [items, setItems] = useState<EmployeeItem[]>([]);
   const [stages, setStages] = useState<StageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
 
   const [fullName, setFullName] = useState(EMPTY_FORM.fullName);
   const [email, setEmail] = useState(EMPTY_FORM.email);
@@ -126,6 +167,7 @@ export function EmployeesClient() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [stageNeedsReselect, setStageNeedsReselect] = useState(false);
 
   const [createdCredentials, setCreatedCredentials] = useState<{
     email: string;
@@ -181,6 +223,7 @@ export function EmployeesClient() {
     setActive(EMPTY_FORM.active);
     setShowPassword(false);
     setEditingId(null);
+    setStageNeedsReselect(false);
   }
 
   function startEdit(item: EmployeeItem) {
@@ -188,11 +231,16 @@ export function EmployeesClient() {
     setCreatedCredentials(null);
     setEditingId(item.id);
 
+    const stageExists =
+      !!item.stage_id && stages.some((s) => s.id === item.stage_id);
+
     setFullName(item.full_name || "");
     setEmail(item.email || "");
     setPhone(item.phone || "");
     setPassword("");
-    setStageId(item.stage_id || "");
+    setStageId(stageExists ? item.stage_id || "" : "");
+    setStageNeedsReselect(!!item.stage_id && !stageExists);
+
     setPayType(item.pay_type === "salary" ? "salary" : "piece");
     setBaseSalary(
       item.pay_type === "salary" ? String(item.base_salary || 0) : "",
@@ -208,6 +256,12 @@ export function EmployeesClient() {
       item.has_over_target_bonus ? String(item.bonus_per_extra_piece || 0) : "",
     );
     setActive(!!item.active);
+
+    if (!!item.stage_id && !stageExists) {
+      setError(
+        `الموظف مربوط بمرحلة قديمة أو مؤرشفة (${item.stage_name || "غير معروفة"})، اختر مرحلة جديدة ثم احفظ.`,
+      );
+    }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -252,6 +306,11 @@ export function EmployeesClient() {
       const json = (await res.json()) as CreateEmployeeResponse;
 
       if (!res.ok || !json.ok) {
+        if (json.error === "Invalid stage_id") {
+          throw new Error(
+            "المرحلة المحددة غير صالحة أو مؤرشفة، اختر مرحلة صحيحة ثم احفظ",
+          );
+        }
         throw new Error(json.error || "Failed to save employee");
       }
 
@@ -280,18 +339,6 @@ export function EmployeesClient() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          full_name: item.full_name,
-          email: item.email,
-          phone: item.phone,
-          stage_id: item.stage_id,
-          pay_type: item.pay_type === "salary" ? "salary" : "piece",
-          base_salary: item.pay_type === "salary" ? item.base_salary || 0 : 0,
-          has_monthly_target: item.has_monthly_target,
-          monthly_target: item.has_monthly_target ? item.monthly_target : null,
-          has_over_target_bonus: item.has_over_target_bonus,
-          bonus_per_extra_piece: item.has_over_target_bonus
-            ? item.bonus_per_extra_piece || 0
-            : 0,
           active: !item.active,
         }),
       });
@@ -351,43 +398,68 @@ export function EmployeesClient() {
     [editingId],
   );
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">الموظفين</h1>
-          <p className="text-sm text-muted-foreground">
-            إدارة موظفي المشغل وربطهم بالتنفيذ والإنتاج لاحقًا
-          </p>
-        </div>
+  const stats = useMemo(() => {
+    const total = items.length;
+    const activeCount = items.filter((x) => x.active).length;
+    const salaryCount = items.filter((x) => x.pay_type === "salary").length;
+    const pieceCount = items.filter((x) => x.pay_type === "piece").length;
 
-        <Button variant="outline" onClick={loadAll} disabled={loading}>
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCcw className="h-4 w-4" />
-          )}
-          تحديث
-        </Button>
+    return { total, activeCount, salaryCount, pieceCount };
+  }, [items]);
+
+  return (
+    <div dir="rtl" className="space-y-6">
+      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 md:p-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="space-y-3 text-right">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Users className="h-3.5 w-3.5" />
+              إدارة الموظفين وربطهم بالإنتاج
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-black tracking-tight md:text-3xl">
+                الموظفين
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-base">
+                إدارة موظفي المشغل وربطهم بالمراحل والأهداف وطريقة الدفع
+              </p>
+            </div>
+          </div>
+
+          <Button
+            variant="outline"
+            className="h-11 gap-2 rounded-2xl border-border/70"
+            onClick={loadAll}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-4 w-4" />
+            )}
+            تحديث
+          </Button>
+        </div>
       </div>
 
       {error ? (
-        <Card className="border-destructive">
-          <CardContent className="pt-6 text-sm text-destructive">
+        <Card className="rounded-3xl border-red-200 bg-red-50 shadow-sm">
+          <CardContent className="p-5 text-sm text-red-700">
             {error}
           </CardContent>
         </Card>
       ) : null}
 
       {createdCredentials ? (
-        <Card className="border-emerald-200 bg-emerald-50">
-          <CardContent className="space-y-3 pt-6">
+        <Card className="rounded-3xl border-emerald-200 bg-emerald-50 shadow-sm">
+          <CardContent className="space-y-4 p-5">
             <div className="text-sm font-bold text-emerald-800">
               تم إنشاء حساب العامل بنجاح
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border bg-white p-3">
+              <div className="rounded-2xl border bg-white p-4">
                 <div className="mb-1 text-xs text-muted-foreground">
                   الإيميل
                 </div>
@@ -396,7 +468,7 @@ export function EmployeesClient() {
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-white p-3">
+              <div className="rounded-2xl border bg-white p-4">
                 <div className="mb-1 text-xs text-muted-foreground">
                   كلمة المرور
                 </div>
@@ -414,26 +486,73 @@ export function EmployeesClient() {
         </Card>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{formTitle}</CardTitle>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          title="إجمالي الموظفين"
+          value={String(stats.total)}
+          icon={Users}
+        />
+        <StatCard
+          title="الموظفون النشطون"
+          value={String(stats.activeCount)}
+          icon={ShieldCheck}
+        />
+        <StatCard
+          title="رواتب شهرية"
+          value={String(stats.salaryCount)}
+          icon={Wallet}
+        />
+        <StatCard
+          title="عمل بالقطعة"
+          value={String(stats.pieceCount)}
+          icon={Target}
+        />
+      </div>
 
-            {editingId ? (
-              <Button variant="ghost" size="sm" onClick={resetForm}>
-                <X className="h-4 w-4" />
-                إلغاء
-              </Button>
-            ) : null}
+      <div className="grid gap-5 lg:grid-cols-3">
+        <Card className="overflow-hidden rounded-3xl border-border/70 shadow-sm lg:col-span-1">
+          <CardHeader className="border-b border-border/60">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <UserCog className="h-5 w-5" />
+                {formTitle}
+              </CardTitle>
+
+              {editingId ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-xl"
+                  onClick={resetForm}
+                >
+                  <X className="h-4 w-4" />
+                  إلغاء
+                </Button>
+              ) : null}
+            </div>
           </CardHeader>
 
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-5 p-5">
+            {stageNeedsReselect ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <div className="mb-1 flex items-center gap-2 font-bold">
+                  <AlertTriangle className="h-4 w-4" />
+                  يلزم اختيار مرحلة جديدة
+                </div>
+                <div>
+                  المرحلة القديمة لهذا الموظف لم تعد متاحة ضمن المراحل النشطة،
+                  لذلك اختر مرحلة صحيحة ثم احفظ.
+                </div>
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <Label>اسم الموظف</Label>
               <Input
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="مثال: صالح أحمد"
+                className="h-11 rounded-2xl"
               />
             </div>
 
@@ -445,6 +564,7 @@ export function EmployeesClient() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
                 dir="ltr"
+                className="h-11 rounded-2xl"
               />
             </div>
 
@@ -455,6 +575,7 @@ export function EmployeesClient() {
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="05xxxxxxxx"
                 dir="ltr"
+                className="h-11 rounded-2xl"
               />
             </div>
 
@@ -471,7 +592,7 @@ export function EmployeesClient() {
                       : "اتركها فارغة لتوليد كلمة مرور تلقائيًا"
                   }
                   dir="ltr"
-                  className="pe-10"
+                  className="h-11 rounded-2xl pe-10"
                 />
                 <button
                   type="button"
@@ -485,7 +606,8 @@ export function EmployeesClient() {
                   )}
                 </button>
               </div>
-              <div className="text-xs text-muted-foreground">
+
+              <div className="text-xs leading-6 text-muted-foreground">
                 {editingId
                   ? "إذا كتبت كلمة مرور جديدة سيتم تغييرها لهذا العامل"
                   : "إذا تركتها فارغة، النظام سينشئ كلمة مرور مؤقتة ويعرضها لك بعد الحفظ"}
@@ -494,8 +616,17 @@ export function EmployeesClient() {
 
             <div className="space-y-2">
               <Label>الوظيفة / المرحلة</Label>
-              <Select value={stageId} onValueChange={setStageId}>
-                <SelectTrigger>
+              <Select
+                value={stageId}
+                onValueChange={(value) => {
+                  setStageId(value);
+                  setStageNeedsReselect(false);
+                  if (error.includes("مرحلة")) {
+                    setError("");
+                  }
+                }}
+              >
+                <SelectTrigger className="h-11 rounded-2xl">
                   <SelectValue placeholder="اختر المرحلة" />
                 </SelectTrigger>
                 <SelectContent>
@@ -516,7 +647,7 @@ export function EmployeesClient() {
 
             <div className="space-y-3">
               <Label>طريقة الدفع</Label>
-              <div className="flex flex-wrap gap-3 rounded-lg border p-3">
+              <div className="flex flex-wrap gap-3 rounded-2xl border border-border/70 p-4">
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="radio"
@@ -549,11 +680,12 @@ export function EmployeesClient() {
                   value={baseSalary}
                   onChange={(e) => setBaseSalary(e.target.value)}
                   placeholder="0"
+                  className="h-11 rounded-2xl"
                 />
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="flex items-center justify-between rounded-2xl border border-border/70 p-4">
               <div>
                 <div className="text-sm font-medium">هل له هدف شهري؟</div>
               </div>
@@ -578,12 +710,13 @@ export function EmployeesClient() {
                   value={monthlyTarget}
                   onChange={(e) => setMonthlyTarget(e.target.value)}
                   placeholder="مثال: 100"
+                  className="h-11 rounded-2xl"
                 />
               </div>
             ) : null}
 
             {hasMonthlyTarget ? (
-              <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="flex items-center justify-between rounded-2xl border border-border/70 p-4">
                 <div>
                   <div className="text-sm font-medium">
                     هل له مكافأة إذا تجاوز الهدف الشهري؟
@@ -607,11 +740,12 @@ export function EmployeesClient() {
                   value={bonusPerExtraPiece}
                   onChange={(e) => setBonusPerExtraPiece(e.target.value)}
                   placeholder="0"
+                  className="h-11 rounded-2xl"
                 />
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="flex items-center justify-between rounded-2xl border border-border/70 p-4">
               <div>
                 <div className="text-sm font-medium">نشط</div>
                 <div className="text-xs text-muted-foreground">
@@ -622,7 +756,7 @@ export function EmployeesClient() {
             </div>
 
             <Button
-              className="w-full"
+              className="h-11 w-full gap-2 rounded-2xl"
               onClick={onSave}
               disabled={saving || !fullName || !email || !stageId}
             >
@@ -638,22 +772,28 @@ export function EmployeesClient() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>قائمة الموظفين</CardTitle>
-            <div className="rounded-full bg-muted px-3 py-1 text-xs">
-              {items.length} موظف
+        <Card className="overflow-hidden rounded-3xl border-border/70 shadow-sm lg:col-span-2">
+          <CardHeader className="border-b border-border/60">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Briefcase className="h-5 w-5" />
+                قائمة الموظفين
+              </CardTitle>
+
+              <div className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
+                {items.length} موظف
+              </div>
             </div>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="p-5">
             {loading ? (
-              <div className="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground">
+              <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
                 <Loader2 className="me-2 h-4 w-4 animate-spin" />
                 جاري التحميل...
               </div>
             ) : items.length === 0 ? (
-              <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed text-center">
+              <div className="flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-center">
                 <Users className="h-8 w-8 text-muted-foreground" />
                 <div className="text-sm font-medium">لا يوجد موظفون بعد</div>
                 <div className="text-xs text-muted-foreground">
@@ -661,52 +801,64 @@ export function EmployeesClient() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
+              <div className="overflow-x-auto rounded-2xl border border-border/70">
+                <table className="w-full min-w-[1100px] text-sm">
+                  <thead className="bg-muted/30">
                     <tr className="border-b text-right text-muted-foreground">
-                      <th className="px-3 py-3 font-medium">الاسم</th>
-                      <th className="px-3 py-3 font-medium">الإيميل</th>
-                      <th className="px-3 py-3 font-medium">الجوال</th>
-                      <th className="px-3 py-3 font-medium">المرحلة</th>
-                      <th className="px-3 py-3 font-medium">طريقة الدفع</th>
-                      <th className="px-3 py-3 font-medium">الراتب</th>
-                      <th className="px-3 py-3 font-medium">الهدف</th>
-                      <th className="px-3 py-3 font-medium">مكافأة الزيادة</th>
-                      <th className="px-3 py-3 font-medium">الحالة</th>
-                      <th className="px-3 py-3 font-medium">الإجراءات</th>
+                      <th className="px-4 py-3 font-semibold">الاسم</th>
+                      <th className="px-4 py-3 font-semibold">الإيميل</th>
+                      <th className="px-4 py-3 font-semibold">الجوال</th>
+                      <th className="px-4 py-3 font-semibold">المرحلة</th>
+                      <th className="px-4 py-3 font-semibold">طريقة الدفع</th>
+                      <th className="px-4 py-3 font-semibold">الراتب</th>
+                      <th className="px-4 py-3 font-semibold">الهدف</th>
+                      <th className="px-4 py-3 font-semibold">
+                        مكافأة الزيادة
+                      </th>
+                      <th className="px-4 py-3 font-semibold">الحالة</th>
+                      <th className="px-4 py-3 font-semibold">الإجراءات</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {items.map((item) => (
-                      <tr key={item.id} className="border-b last:border-b-0">
-                        <td className="px-3 py-3">{item.full_name || "-"}</td>
-                        <td className="px-3 py-3">{item.email || "-"}</td>
-                        <td className="px-3 py-3">{item.phone || "-"}</td>
-                        <td className="px-3 py-3">{item.stage_name || "-"}</td>
-                        <td className="px-3 py-3">
+                      <tr
+                        key={item.id}
+                        className="border-b border-border/60 transition last:border-b-0 hover:bg-muted/10"
+                      >
+                        <td className="px-4 py-4 font-medium">
+                          {item.full_name || "-"}
+                        </td>
+                        <td className="px-4 py-4" dir="ltr">
+                          {item.email || "-"}
+                        </td>
+                        <td className="px-4 py-4" dir="ltr">
+                          {item.phone || "-"}
+                        </td>
+                        <td className="px-4 py-4">{item.stage_name || "-"}</td>
+                        <td className="px-4 py-4">
                           {item.pay_type === "piece" ? "بالقطعة" : "راتب"}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-4 py-4">
                           {item.pay_type === "salary"
                             ? Number(item.base_salary || 0).toLocaleString()
                             : "-"}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-4 py-4">
                           {item.has_monthly_target
                             ? (item.monthly_target ?? "-")
                             : "-"}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-4 py-4">
                           {item.has_over_target_bonus
                             ? Number(
                                 item.bonus_per_extra_piece || 0,
                               ).toLocaleString()
                             : "-"}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-4 py-4">
                           <span
-                            className={`rounded-full px-2 py-1 text-xs ${
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
                               item.active
                                 ? "bg-emerald-100 text-emerald-700"
                                 : "bg-muted text-muted-foreground"
@@ -715,11 +867,12 @@ export function EmployeesClient() {
                             {item.active ? "نشط" : "موقوف"}
                           </span>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-4 py-4">
                           <div className="flex flex-wrap gap-2">
                             <Button
                               size="sm"
                               variant="outline"
+                              className="rounded-xl"
                               onClick={() => startEdit(item)}
                               disabled={busyId === item.id}
                             >
@@ -730,6 +883,7 @@ export function EmployeesClient() {
                             <Button
                               size="sm"
                               variant="outline"
+                              className="rounded-xl"
                               onClick={() => toggleActive(item)}
                               disabled={busyId === item.id}
                             >
@@ -746,6 +900,7 @@ export function EmployeesClient() {
                             <Button
                               size="sm"
                               variant="destructive"
+                              className="rounded-xl"
                               onClick={() => onDelete(item)}
                               disabled={busyId === item.id}
                             >

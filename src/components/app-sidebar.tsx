@@ -1,5 +1,21 @@
 // FILE: src/components/app-sidebar.tsx
 import * as React from "react";
+import Link from "next/link";
+import {
+  Home,
+  Package,
+  ShoppingCart,
+  Settings,
+  Table,
+  Users,
+  Printer,
+  Wallet,
+  BarChart3,
+  Layers,
+  Boxes,
+  Bell,
+  Sparkles,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -14,144 +30,136 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-import Link from "next/link";
-import {
-  Home,
-  Package,
-  ShoppingCart,
-  Settings,
-  Table,
-  Users,
-  Printer,
-  Wallet,
-  BarChart3,
-} from "lucide-react";
-
 import { NavUser } from "@/components/nav-user";
-import { Bell } from "lucide-react";
+
 type Props = {
   user?: { email?: string | null; name?: string | null };
 };
 
+const mainItems = [
+  { title: "الرئيسية", href: "/dashboard", icon: Home },
+  { title: "الطلبات", href: "/dashboard/orders", icon: ShoppingCart },
+  {
+    title: "دفعات الطباعة",
+    href: "/dashboard/orders/print-batches",
+    icon: Printer,
+  },
+  { title: "المنتجات", href: "/dashboard/products", icon: Package },
+  { title: "Product Matrix", href: "/dashboard/products/matrix", icon: Table },
+];
+
+const managementItems = [
+  { title: "المراحل", href: "/dashboard/settings/stages", icon: Layers },
+  { title: "المخزون", href: "/dashboard/inventory", icon: Boxes },
+  { title: "الموظفين", href: "/dashboard/employees", icon: Users },
+  { title: "المالية", href: "/dashboard/finance", icon: Wallet },
+  { title: "التنبيهات", href: "/dashboard/notifications", icon: Bell },
+  { title: "الأداء", href: "/dashboard/performance", icon: BarChart3 },
+  { title: "الإعدادات", href: "/dashboard/settings", icon: Settings },
+];
+
+function SidebarSection({
+  label,
+  items,
+}: {
+  label: string;
+  items: {
+    title: string;
+    href: string;
+    icon: React.ElementType;
+  }[];
+}) {
+  return (
+    <SidebarGroup className="px-2 py-2">
+      <SidebarGroupLabel
+        dir="rtl"
+        className="mb-2 px-3 text-right text-xs font-semibold text-muted-foreground"
+      >
+        {label}
+      </SidebarGroupLabel>
+
+      <SidebarGroupContent>
+        <SidebarMenu className="space-y-1.5">
+          {items.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  asChild
+                  className="
+                    h-12 rounded-2xl px-3
+                    hover:bg-muted/60
+                    data-[active=true]:bg-primary
+                    data-[active=true]:text-primary-foreground
+                  "
+                >
+                  <Link
+                    href={item.href}
+                    dir="rtl"
+                    className="flex w-full items-center justify-start gap-3 text-right"
+                  >
+                    <div
+                      className="
+                        flex h-9 w-9 shrink-0 items-center justify-center
+                        rounded-xl border border-border bg-background
+                      "
+                    >
+                      <Icon className="h-4.5 w-4.5" />
+                    </div>
+
+                    <span className="min-w-0 flex-1 text-right text-sm font-medium">
+                      {item.title}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export function AppSidebar({ user }: Props) {
   return (
-    <Sidebar side="right">
-      <SidebarHeader className="px-4 py-3">
-        <div className="text-lg font-bold">Elyaia</div>
+    <Sidebar
+      side="right"
+      dir="rtl"
+      className="border-l bg-background text-right"
+    >
+      <SidebarHeader className="px-4 pb-3 pt-4">
+        <div className="rounded-2xl border bg-muted/40 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Sparkles className="h-4.5 w-4.5" />
+            </div>
+
+            <div className="text-right">
+              <div className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground">
+                PRODUCTION SYSTEM
+              </div>
+              <div className="text-lg font-bold">Elyaia Production</div>
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            <span>لوحة تشغيل وإدارة متكاملة</span>
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          </div>
+        </div>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>القائمة</SidebarGroupLabel>
-
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {/* الرئيسية */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard" className="gap-2">
-                    <Home className="h-4 w-4" />
-                    الرئيسية
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* الطلبات */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/orders" className="gap-2">
-                    <ShoppingCart className="h-4 w-4" />
-                    الطلبات
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* دفعات الطباعة */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link
-                    href="/dashboard/orders/print-batches"
-                    className="gap-2"
-                  >
-                    <Printer className="h-4 w-4" />
-                    دفعات الطباعة
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* المنتجات */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/products" className="gap-2">
-                    <Package className="h-4 w-4" />
-                    المنتجات
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* Product Matrix */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/products/matrix" className="gap-2">
-                    <Table className="h-4 w-4" />
-                    Product Matrix
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* الموظفين */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/employees" className="gap-2">
-                    <Users className="h-4 w-4" />
-                    الموظفين
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* المالية */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/finance" className="gap-2">
-                    <Wallet className="h-4 w-4" />
-                    المالية
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/notifications" className="gap-2">
-                    <Bell className="h-4 w-4" />
-                    التنبيهات
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {/* الأداء */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/performance" className="gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    الأداء
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-
-              {/* الإعدادات */}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/settings" className="gap-2">
-                    <Settings className="h-4 w-4" />
-                    الإعدادات
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      <SidebarContent className="px-2 pb-2">
+        <SidebarSection label="العمليات الأساسية" items={mainItems} />
+        <SidebarSection label="الإدارة والتحكم" items={managementItems} />
       </SidebarContent>
 
-      <SidebarFooter className="p-2">
-        <NavUser email={user?.email} name={user?.name} />
+      <SidebarFooter className="p-3">
+        <div className="rounded-2xl border bg-muted/30 p-2">
+          <NavUser email={user?.email} name={user?.name} />
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

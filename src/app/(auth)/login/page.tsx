@@ -29,7 +29,11 @@ export default function LoginPage() {
 
       <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[380px]">
         <div className="flex flex-col space-y-2 text-center">
-          <Icons.logo className="mx-auto h-7 w-7" />
+          <img
+            src="/logo.png"
+            alt="Elyaia Production"
+            className="mx-auto h-10 w-auto"
+          />
           <h1 className="text-2xl font-semibold tracking-tight">
             تسجيل الدخول
           </h1>

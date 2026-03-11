@@ -592,17 +592,78 @@ export default async function Page({
   const pages = chunkArray(cards, 4);
 
   return (
-    <div className="min-h-screen bg-neutral-100 text-black" dir="rtl">
+    <div
+      className="print-root min-h-screen bg-neutral-100 text-black"
+      dir="rtl"
+    >
       <style
         dangerouslySetInnerHTML={{
           __html: `
-            @page { size: A4 portrait; margin: 10mm; }
+            @page {
+              size: A4 portrait;
+              margin: 5mm;
+            }
+
             @media print {
-              html, body { background: #fff !important; }
-              .no-print { display: none !important; }
-              .print-wrap { max-width: none !important; padding: 0 !important; }
-              .print-page { break-after: page; page-break-after: always; margin: 0 !important; min-height: 277mm !important; }
-              .print-page:last-child { break-after: auto; page-break-after: auto; }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+
+              aside,
+              header,
+              footer,
+              nav,
+              .no-print {
+                display: none !important;
+              }
+
+              main {
+                padding: 0 !important;
+                margin: 0 !important;
+              }
+
+              .print-root {
+                background: #fff !important;
+                min-height: auto !important;
+              }
+
+              .print-wrap {
+                max-width: none !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+              }
+
+              .print-page {
+                width: 200mm !important;
+                min-height: 286mm !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+                background: #fff !important;
+                box-shadow: none !important;
+                border: 0 !important;
+                break-after: page;
+                page-break-after: always;
+              }
+
+              .print-page:last-child {
+                break-after: auto;
+                page-break-after: auto;
+              }
+
+              .print-card {
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
+                box-shadow: none !important;
+              }
+
+              .print-card img {
+                max-height: 100%;
+              }
             }
           `,
         }}
@@ -633,12 +694,12 @@ export default async function Page({
           pages.map((page, pageIndex) => (
             <div
               key={pageIndex}
-              className="print-page mb-4 grid min-h-[277mm] grid-cols-2 gap-4 bg-white p-4 print:mb-0 print:gap-3 print:p-0"
+              className="print-page mb-4 grid grid-cols-2 gap-4 bg-white p-4 print:mb-0 print:gap-2 print:p-0"
             >
               {page.map((card) => (
                 <div
                   key={card.productionItemId}
-                  className="flex h-[132mm] flex-col overflow-hidden rounded-2xl border border-neutral-300 bg-white"
+                  className="print-card flex h-[122mm] flex-col overflow-hidden rounded-2xl border border-neutral-300 bg-white"
                 >
                   <div className="flex items-start justify-between border-b px-4 py-3">
                     <div className="text-right">
@@ -742,9 +803,9 @@ export default async function Page({
                     </div>
                   </div>
 
-                  <div className="border-t px-4 py-3">
+                  <div className="border-t px-4 py-2">
                     <div className="grid grid-cols-[96px_1fr] items-end gap-4">
-                      <div className="flex h-[96px] w-[96px] items-center justify-center rounded-xl border bg-white p-2">
+                      <div className="flex h-[88px] w-[88px] items-center justify-center rounded-xl border bg-white p-2">
                         <img
                           alt={card.qrCode}
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
@@ -766,14 +827,6 @@ export default async function Page({
                   </div>
                 </div>
               ))}
-
-              {page.length < 4 &&
-                Array.from({ length: 4 - page.length }).map((_, i) => (
-                  <div
-                    key={`empty-${pageIndex}-${i}`}
-                    className="h-[132mm] rounded-2xl border border-dashed border-neutral-200 bg-white"
-                  />
-                ))}
             </div>
           ))
         )}

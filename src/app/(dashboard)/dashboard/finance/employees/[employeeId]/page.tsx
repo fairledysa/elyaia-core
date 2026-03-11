@@ -3,6 +3,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  Wallet,
+  ArrowLeft,
+  TrendingUp,
+  TrendingDown,
+  HandCoins,
+  User,
+  CalendarDays,
+} from "lucide-react";
 
 type EmployeeDetailsResponse = {
   ok?: boolean;
@@ -50,9 +59,8 @@ function formatMoney(value: number | null | undefined) {
 function mapPayType(value: string | null | undefined) {
   if (!value) return "-";
   if (value === "salary") return "راتب شهري";
-  if (value === "piece" || value === "piece_rate" || value === "per_piece") {
+  if (value === "piece" || value === "piece_rate" || value === "per_piece")
     return "بالقطعة";
-  }
   return value;
 }
 
@@ -95,16 +103,41 @@ function actionTitle(type: ActionType) {
   return "حركة مالية";
 }
 
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  color = "",
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+  color?: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-border/70 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-sm text-muted-foreground">{title}</div>
+          <div className={`mt-2 text-3xl font-black ${color}`}>{value}</div>
+        </div>
+
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-muted/40">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeeFinancePage({
   params,
 }: {
   params: Promise<{ employeeId: string }>;
 }) {
   const [employeeId, setEmployeeId] = useState("");
-  const [employee, setEmployee] = useState<NonNullable<
-    EmployeeDetailsResponse["employee"]
-  > | null>(null);
-  const [moves, setMoves] = useState<EmployeeMovesResponse["items"]>([]);
+  const [employee, setEmployee] = useState<any>(null);
+  const [moves, setMoves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,25 +170,18 @@ export default function EmployeeFinancePage({
 
       const [employeeRes, movesRes] = await Promise.all([
         fetch(`/api/finance/employees/${finalEmployeeId}`, {
-          method: "GET",
           cache: "no-store",
         }),
         fetch(
           `/api/finance/employees/${finalEmployeeId}/moves?${queryString}`,
           {
-            method: "GET",
             cache: "no-store",
           },
         ),
       ]);
 
-      const employeeJson = (await employeeRes
-        .json()
-        .catch(() => null)) as EmployeeDetailsResponse | null;
-
-      const movesJson = (await movesRes
-        .json()
-        .catch(() => null)) as EmployeeMovesResponse | null;
+      const employeeJson = await employeeRes.json();
+      const movesJson = await movesRes.json();
 
       if (!employeeRes.ok || !employeeJson?.ok) {
         throw new Error(employeeJson?.error || "FAILED_TO_LOAD_EMPLOYEE");
@@ -165,7 +191,7 @@ export default function EmployeeFinancePage({
         throw new Error(movesJson?.error || "FAILED_TO_LOAD_MOVES");
       }
 
-      setEmployee(employeeJson.employee || null);
+      setEmployee(employeeJson.employee);
       setMoves(movesJson.items ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "FAILED_TO_LOAD_EMPLOYEE");
@@ -174,10 +200,13 @@ export default function EmployeeFinancePage({
     }
   }
 
-  async function submitAction(type: Exclude<ActionType, "">) {
-    if (!employeeId) return;
+  useEffect(() => {
+    if (employeeId) loadData(employeeId);
+  }, [employeeId]);
 
+  async function submitAction(type: Exclude<ActionType, "">) {
     const amount = Number(actionAmount);
+
     if (!Number.isFinite(amount) || amount <= 0) {
       setError("أدخل مبلغ صحيح");
       return;
@@ -185,24 +214,14 @@ export default function EmployeeFinancePage({
 
     try {
       setActionLoading(true);
-      setError(null);
 
       const res = await fetch(`/api/finance/employees/${employeeId}/actions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          type,
-          amount,
-          note: actionNote,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, amount, note: actionNote }),
       });
 
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
+      const json = await res.json();
 
       if (!res.ok || !json?.ok) {
         throw new Error(json?.error || "FAILED_TO_CREATE_ACTION");
@@ -211,6 +230,7 @@ export default function EmployeeFinancePage({
       setActionType("");
       setActionAmount("");
       setActionNote("");
+
       await loadData(employeeId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "FAILED_TO_CREATE_ACTION");
@@ -219,17 +239,12 @@ export default function EmployeeFinancePage({
     }
   }
 
-  useEffect(() => {
-    if (employeeId) {
-      loadData(employeeId);
-    }
-  }, [employeeId]);
-
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div dir="rtl" className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between rounded-3xl border border-border/70 bg-white p-6 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold">كشف حساب الموظف</h1>
+          <h1 className="text-2xl font-black">كشف حساب الموظف</h1>
           <p className="text-muted-foreground">
             {employee?.name || "-"} • {employee?.stageName || "-"} •{" "}
             {mapPayType(employee?.payType)} • {mapActive(employee?.active)}
@@ -238,99 +253,96 @@ export default function EmployeeFinancePage({
 
         <Link
           href="/dashboard/finance"
-          className="rounded border px-4 py-2 text-sm"
+          className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm"
         >
+          <ArrowLeft className="h-4 w-4" />
           رجوع
         </Link>
       </div>
 
-      {error ? (
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
           {error}
         </div>
-      ) : null}
+      )}
 
+      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-5">
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">له</p>
-          <h2 className="text-xl font-bold text-green-600">
-            {loading ? "..." : formatMoney(employee?.credit)}
-          </h2>
-        </div>
+        <StatCard
+          title="له"
+          value={loading ? "..." : formatMoney(employee?.credit)}
+          icon={TrendingUp}
+          color="text-green-600"
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">عليه</p>
-          <h2 className="text-xl font-bold text-red-500">
-            {loading ? "..." : formatMoney(employee?.debit)}
-          </h2>
-        </div>
+        <StatCard
+          title="عليه"
+          value={loading ? "..." : formatMoney(employee?.debit)}
+          icon={TrendingDown}
+          color="text-red-500"
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">المصروف</p>
-          <h2 className="text-xl font-bold">
-            {loading ? "..." : formatMoney(employee?.payout)}
-          </h2>
-        </div>
+        <StatCard
+          title="المصروف"
+          value={loading ? "..." : formatMoney(employee?.payout)}
+          icon={HandCoins}
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">الرصيد</p>
-          <h2 className="text-xl font-bold text-blue-700">
-            {loading ? "..." : formatMoney(employee?.balance)}
-          </h2>
-        </div>
+        <StatCard
+          title="الرصيد"
+          value={loading ? "..." : formatMoney(employee?.balance)}
+          icon={Wallet}
+          color="text-blue-700"
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">المنفذ</p>
-          <h2 className="text-xl font-bold">
-            {loading ? "..." : (employee?.completedCount ?? 0)}
-          </h2>
-        </div>
+        <StatCard
+          title="المنفذ"
+          value={loading ? "..." : String(employee?.completedCount ?? 0)}
+          icon={User}
+        />
       </div>
 
+      {/* Actions */}
       <div className="flex flex-wrap gap-3">
         <button
-          className="rounded bg-blue-600 px-4 py-2 text-white"
-          type="button"
           onClick={() => setActionType("advance")}
+          className="rounded-2xl bg-blue-600 px-4 py-2 text-white"
         >
           سلفة
         </button>
 
         <button
-          className="rounded bg-red-600 px-4 py-2 text-white"
-          type="button"
           onClick={() => setActionType("deduction")}
+          className="rounded-2xl bg-red-600 px-4 py-2 text-white"
         >
           خصم
         </button>
 
         <button
-          className="rounded bg-green-600 px-4 py-2 text-white"
-          type="button"
           onClick={() => setActionType("payout")}
+          className="rounded-2xl bg-green-600 px-4 py-2 text-white"
         >
           صرف
         </button>
 
         <button
-          className="rounded bg-purple-600 px-4 py-2 text-white"
-          type="button"
           onClick={() => setActionType("bonus")}
+          className="rounded-2xl bg-purple-600 px-4 py-2 text-white"
         >
           مكافأة
         </button>
 
         <button
-          className="rounded bg-slate-800 px-4 py-2 text-white"
-          type="button"
           onClick={() => setActionType("salary")}
+          className="rounded-2xl bg-black px-4 py-2 text-white"
         >
           راتب
         </button>
       </div>
 
-      {actionType ? (
-        <div className="space-y-4 rounded border bg-slate-50 p-4">
+      {/* Action Form */}
+      {actionType && (
+        <div className="space-y-4 rounded-3xl border bg-muted/20 p-5">
           <div className="text-lg font-bold">{actionTitle(actionType)}</div>
 
           <div className="flex flex-wrap gap-3">
@@ -338,25 +350,21 @@ export default function EmployeeFinancePage({
               value={actionAmount}
               onChange={(e) => setActionAmount(e.target.value)}
               type="number"
-              min="0"
-              step="0.01"
               placeholder="المبلغ"
-              className="rounded border px-3 py-2"
+              className="rounded-2xl border px-3 py-2"
             />
 
             <input
               value={actionNote}
               onChange={(e) => setActionNote(e.target.value)}
-              type="text"
               placeholder="ملاحظة"
-              className="min-w-[260px] rounded border px-3 py-2"
+              className="min-w-[260px] rounded-2xl border px-3 py-2"
             />
 
             <button
               onClick={() => submitAction(actionType)}
-              className="rounded bg-black px-4 py-2 text-white"
-              type="button"
               disabled={actionLoading}
+              className="rounded-2xl bg-black px-4 py-2 text-white"
             >
               {actionLoading ? "جاري الحفظ..." : "حفظ"}
             </button>
@@ -367,40 +375,42 @@ export default function EmployeeFinancePage({
                 setActionAmount("");
                 setActionNote("");
               }}
-              className="rounded border px-4 py-2"
-              type="button"
+              className="rounded-2xl border px-4 py-2"
             >
               إلغاء
             </button>
           </div>
         </div>
-      ) : null}
+      )}
 
+      {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <input
           value={from}
           onChange={(e) => setFrom(e.target.value)}
           type="date"
-          className="rounded border px-3 py-2"
+          className="rounded-2xl border px-3 py-2"
         />
+
         <input
           value={to}
           onChange={(e) => setTo(e.target.value)}
           type="date"
-          className="rounded border px-3 py-2"
+          className="rounded-2xl border px-3 py-2"
         />
+
         <button
           onClick={() => loadData()}
-          className="rounded bg-black px-4 py-2 text-white"
-          type="button"
+          className="rounded-2xl bg-black px-4 py-2 text-white"
         >
           تصفية
         </button>
       </div>
 
-      <div className="overflow-hidden rounded border">
+      {/* Moves */}
+      <div className="overflow-hidden rounded-3xl border border-border/70 bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-muted">
+          <thead className="bg-muted/30">
             <tr>
               <th className="p-3 text-right">التاريخ</th>
               <th className="text-right">النوع</th>
@@ -411,15 +421,15 @@ export default function EmployeeFinancePage({
 
           <tbody>
             {loading ? (
-              <tr className="border-t">
+              <tr>
                 <td
-                  className="p-4 text-center text-muted-foreground"
+                  className="p-6 text-center text-muted-foreground"
                   colSpan={4}
                 >
                   جاري تحميل الحركات...
                 </td>
               </tr>
-            ) : moves && moves.length > 0 ? (
+            ) : moves.length > 0 ? (
               moves.map((move) => (
                 <tr key={move.id} className="border-t">
                   <td className="p-3">{formatDate(move.createdAt)}</td>
@@ -438,9 +448,9 @@ export default function EmployeeFinancePage({
                 </tr>
               ))
             ) : (
-              <tr className="border-t">
+              <tr>
                 <td
-                  className="p-4 text-center text-muted-foreground"
+                  className="p-6 text-center text-muted-foreground"
                   colSpan={4}
                 >
                   لا توجد حركات

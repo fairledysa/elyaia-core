@@ -19,13 +19,13 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
     .eq("tenant_id", tenantId);
 
   if (installationsError) {
-    throw new Error(installationsError.message);
+    throw new Error("تعذر قراءة إعدادات ربط سلة");
   }
 
   const ids = (installationIds ?? []).map((x) => x.id);
 
   if (ids.length === 0) {
-    throw new Error("NO_SALLA_INSTALLATIONS");
+    throw new Error("لا يوجد ربط سلة مفعّل لهذا الحساب");
   }
 
   const { data: candidateOrders, error: ordersError } = await admin
@@ -35,13 +35,13 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
     .in("status", ["pending", "under_review", "processing", "new"]);
 
   if (ordersError) {
-    throw new Error(ordersError.message);
+    throw new Error("تعذر جلب الطلبات من قاعدة البيانات");
   }
 
   const orderIds = (candidateOrders ?? []).map((o) => o.id);
 
   if (orderIds.length === 0) {
-    throw new Error("NO_PENDING_ORDERS");
+    throw new Error("لا توجد طلبات معلّقة حاليًا");
   }
 
   const { data: alreadyLinked, error: linkedError } = await admin
@@ -51,14 +51,14 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
     .in("order_id", orderIds);
 
   if (linkedError) {
-    throw new Error(linkedError.message);
+    throw new Error("تعذر التحقق من الطلبات المرتبطة بدفعات الطباعة");
   }
 
   const linkedSet = new Set((alreadyLinked ?? []).map((x) => x.order_id));
   const orders = (candidateOrders ?? []).filter((o) => !linkedSet.has(o.id));
 
   if (orders.length === 0) {
-    throw new Error("NO_UNPRINTED_PENDING_ORDERS");
+    throw new Error("لا توجد طلبات معلّقة غير مطبوعة لهذا اليوم");
   }
 
   const { data: lastBatch } = await admin
@@ -85,7 +85,7 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
     .single();
 
   if (batchError || !batch) {
-    throw new Error(batchError?.message || "FAILED_TO_CREATE_BATCH");
+    throw new Error("تعذر إنشاء دفعة الطباعة");
   }
 
   let totalOrders = 0;
@@ -108,7 +108,7 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
       .order("quantity_index", { ascending: true });
 
     if (freeItemsError) {
-      throw new Error(freeItemsError.message);
+      throw new Error("تعذر تجهيز عناصر الإنتاج للطباعة");
     }
 
     if (!freeItems || freeItems.length === 0) {
@@ -124,7 +124,7 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
       });
 
     if (linkOrderError) {
-      throw new Error(linkOrderError.message);
+      throw new Error("تعذر ربط الطلب بدفعة الطباعة");
     }
 
     totalOrders += 1;
@@ -141,7 +141,7 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
         .eq("id", item.id);
 
       if (updateError) {
-        throw new Error(updateError.message);
+        throw new Error("تعذر تحديث عناصر الطباعة");
       }
 
       sequence += 1;
@@ -150,7 +150,7 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
 
   if (totalOrders === 0 || totalItems === 0) {
     await admin.from("print_batches").delete().eq("id", batch.id);
-    throw new Error("NO_ITEMS_TO_PRINT");
+    throw new Error("لا توجد عناصر جاهزة للطباعة في الطلبات الحالية");
   }
 
   const { error: finishError } = await admin
@@ -163,7 +163,7 @@ export async function createPrintBatch(params: CreatePrintBatchParams) {
     .eq("id", batch.id);
 
   if (finishError) {
-    throw new Error(finishError.message);
+    throw new Error("تم إنشاء الدفعة لكن تعذر إنهاء تحديث حالتها");
   }
 
   return {

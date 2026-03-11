@@ -3,6 +3,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import {
+  Loader2,
+  Settings2,
+  Plus,
+  Trash2,
+  Package,
+  Search,
+  Workflow,
+  Boxes,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,7 +26,6 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Settings2, Plus, Trash2 } from "lucide-react";
 
 type SallaProductRow = {
   salla_product_id: string;
@@ -68,6 +78,46 @@ async function j<T>(url: string, init?: RequestInit): Promise<T> {
   return JSON.parse(txt) as T;
 }
 
+function fmtMoney(price: number | null, currency: string | null) {
+  if (price == null) return "—";
+  return `${price} ${currency || ""}`.trim();
+}
+
+function SectionShell({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: React.ElementType;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="overflow-hidden rounded-3xl border-border/70 shadow-sm">
+      <CardHeader className="border-b border-border/60 pb-4">
+        <div className="flex items-center gap-3 text-right">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
+            <Icon className="h-5 w-5" />
+          </div>
+
+          <div className="min-w-0">
+            <CardTitle className="text-base font-bold md:text-lg">
+              {title}
+            </CardTitle>
+            {subtitle ? (
+              <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+            ) : null}
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-4">{children}</CardContent>
+    </Card>
+  );
+}
+
 export default function ProductsClient() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<SallaProductRow[]>([]);
@@ -86,7 +136,6 @@ export default function ProductsClient() {
     ProductMaterialRow[]
   >([]);
 
-  // create form
   const [addStageId, setAddStageId] = useState("");
   const [addStagePayout, setAddStagePayout] = useState<string>("");
   const [addMaterialId, setAddMaterialId] = useState("");
@@ -96,12 +145,12 @@ export default function ProductsClient() {
     (async () => {
       try {
         setLoading(true);
+
         const p = await j<{ ok: boolean; items: SallaProductRow[] }>(
           "/api/products",
         );
         setProducts(p.items || []);
 
-        // stages list (موجود عندك APIs للمراحل)
         const s = await j<{ ok: boolean; items: StageRow[] }>("/api/stages");
         setStages(
           (s.items || [])
@@ -122,6 +171,7 @@ export default function ProductsClient() {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return products;
+
     return products.filter(
       (p) =>
         (p.name || "").toLowerCase().includes(needle) ||
@@ -133,15 +183,14 @@ export default function ProductsClient() {
     setActive(p);
     setOpen(true);
 
-    // reset form
     setAddStageId("");
     setAddStagePayout("");
     setAddMaterialId("");
     setAddMaterialQty("");
 
-    // load settings
     setPsLoading(true);
     setPmLoading(true);
+
     try {
       const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
         `/api/products/${encodeURIComponent(p.salla_product_id)}/stages`,
@@ -164,6 +213,7 @@ export default function ProductsClient() {
 
   async function addStage() {
     if (!active || !addStageId) return;
+
     setPsLoading(true);
     try {
       await j(
@@ -182,6 +232,7 @@ export default function ProductsClient() {
           }),
         },
       );
+
       const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
         `/api/products/${encodeURIComponent(active.salla_product_id)}/stages`,
       );
@@ -190,6 +241,7 @@ export default function ProductsClient() {
           (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
         ),
       );
+
       setAddStageId("");
       setAddStagePayout("");
     } finally {
@@ -199,6 +251,7 @@ export default function ProductsClient() {
 
   async function patchStage(id: string, patch: Partial<ProductStageRow>) {
     if (!active) return;
+
     setPsLoading(true);
     try {
       await j(
@@ -209,6 +262,7 @@ export default function ProductsClient() {
           body: JSON.stringify({ id, ...patch }),
         },
       );
+
       const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
         `/api/products/${encodeURIComponent(active.salla_product_id)}/stages`,
       );
@@ -224,6 +278,7 @@ export default function ProductsClient() {
 
   async function deleteStage(id: string) {
     if (!active) return;
+
     setPsLoading(true);
     try {
       await j(
@@ -234,6 +289,7 @@ export default function ProductsClient() {
           body: JSON.stringify({ id }),
         },
       );
+
       const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
         `/api/products/${encodeURIComponent(active.salla_product_id)}/stages`,
       );
@@ -249,6 +305,7 @@ export default function ProductsClient() {
 
   async function addMaterial() {
     if (!active || !addMaterialId) return;
+
     setPmLoading(true);
     try {
       await j(
@@ -262,6 +319,7 @@ export default function ProductsClient() {
           }),
         },
       );
+
       const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
         `/api/products/${encodeURIComponent(active.salla_product_id)}/materials`,
       );
@@ -275,6 +333,7 @@ export default function ProductsClient() {
 
   async function patchMaterial(id: string, qty_per_piece: number) {
     if (!active) return;
+
     setPmLoading(true);
     try {
       await j(
@@ -285,6 +344,7 @@ export default function ProductsClient() {
           body: JSON.stringify({ id, qty_per_piece }),
         },
       );
+
       const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
         `/api/products/${encodeURIComponent(active.salla_product_id)}/materials`,
       );
@@ -296,6 +356,7 @@ export default function ProductsClient() {
 
   async function deleteMaterial(id: string) {
     if (!active) return;
+
     setPmLoading(true);
     try {
       await j(
@@ -306,6 +367,7 @@ export default function ProductsClient() {
           body: JSON.stringify({ id }),
         },
       );
+
       const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
         `/api/products/${encodeURIComponent(active.salla_product_id)}/materials`,
       );
@@ -316,328 +378,422 @@ export default function ProductsClient() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">المنتجات</h1>
-          <p className="text-sm text-muted-foreground">
-            منتجات سلة + إعدادات التشغيل (المراحل/المخزون)
-          </p>
-        </div>
-        <div className="w-[260px]">
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="بحث بالاسم أو SKU"
-          />
+    <div dir="rtl" className="space-y-6">
+      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 md:p-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="space-y-3 text-right">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Package className="h-3.5 w-3.5" />
+              إدارة المنتجات وربط التشغيل
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-black tracking-tight md:text-3xl">
+                المنتجات
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-base">
+                منتجات سلة مع إعدادات التشغيل وربط المراحل والمواد لكل منتج
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full xl:w-[320px]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="بحث بالاسم أو SKU"
+                className="h-12 rounded-2xl border-border/70 pr-10"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">قائمة المنتجات</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              جاري التحميل...
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filtered.map((p) => (
-                <div
-                  key={p.salla_product_id}
-                  className="flex items-center gap-3 rounded-xl border p-3"
-                >
-                  <div className="h-12 w-12 overflow-hidden rounded-lg bg-muted">
+      <SectionShell
+        icon={Package}
+        title="قائمة المنتجات"
+        subtitle={`إجمالي النتائج: ${filtered.length}`}
+      >
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            جاري التحميل...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">
+            لا يوجد منتجات.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((p) => (
+              <div
+                key={p.salla_product_id}
+                className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-white p-4 transition hover:bg-muted/20 md:flex-row md:items-center"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-14 w-14 overflow-hidden rounded-2xl border border-border/70 bg-muted">
                     {p.image_url ? (
                       <Image
                         src={p.image_url}
                         alt={p.name || ""}
-                        width={48}
-                        height={48}
-                        className="h-12 w-12 object-cover"
+                        width={56}
+                        height={56}
+                        className="h-14 w-14 object-cover"
                       />
-                    ) : null}
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                        <Package className="h-5 w-5" />
+                      </div>
+                    )}
                   </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="truncate font-medium">
+                  <div className="min-w-0 text-right">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="truncate text-sm font-bold md:text-base">
                         {p.name || "—"}
                       </div>
                       {p.status ? (
-                        <Badge variant="secondary">{p.status}</Badge>
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-3 py-1 text-xs"
+                        >
+                          {p.status}
+                        </Badge>
                       ) : null}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+
+                    <div className="mt-1 text-xs text-muted-foreground">
                       SKU: {p.sku || "—"} • ID: {p.salla_product_id}
                     </div>
                   </div>
+                </div>
 
-                  <div className="text-sm font-medium">
-                    {p.price != null ? p.price : "—"} {p.currency || ""}
+                <div className="mr-auto text-right md:text-left">
+                  <div className="text-sm text-muted-foreground">السعر</div>
+                  <div className="text-sm font-bold md:text-base">
+                    {fmtMoney(p.price, p.currency)}
                   </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="gap-2"
-                    onClick={() => openSettings(p)}
-                  >
-                    <Settings2 className="h-4 w-4" />
-                    إعدادات المنتج
-                  </Button>
                 </div>
-              ))}
 
-              {!filtered.length ? (
-                <div className="text-sm text-muted-foreground">
-                  لا يوجد منتجات.
-                </div>
-              ) : null}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 gap-2 rounded-2xl border-border/70"
+                  onClick={() => openSettings(p)}
+                >
+                  <Settings2 className="h-4 w-4" />
+                  إعدادات المنتج
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionShell>
 
       <Dialog open={open} onOpenChange={(v) => setOpen(v)}>
-        <DialogContent dir="rtl" className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>إعدادات المنتج</DialogTitle>
-          </DialogHeader>
-
+        <DialogContent
+          dir="rtl"
+          className="
+            w-[98vw] max-w-[1400px]
+            h-[90vh] max-h-[90vh]
+            overflow-hidden p-0
+          "
+        >
           {active ? (
-            <div className="space-y-4">
-              <div className="rounded-xl border p-3">
-                <div className="font-medium">{active.name || "—"}</div>
-                <div className="text-xs text-muted-foreground">
-                  SKU: {active.sku || "—"} • {active.salla_product_id}
-                </div>
-              </div>
+            <div className="flex h-full flex-col">
+              <DialogHeader className="shrink-0 border-b px-6 py-5">
+                <DialogTitle className="text-right text-xl font-bold">
+                  إعدادات المنتج
+                </DialogTitle>
+              </DialogHeader>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                {/* مراحل المنتج */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">المراحل</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="grid grid-cols-12 gap-2">
-                      <div className="col-span-7">
-                        <select
-                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                          value={addStageId}
-                          onChange={(e) => setAddStageId(e.target.value)}
-                        >
-                          <option value="">اختر مرحلة</option>
-                          {stages.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-3">
-                        <Input
-                          value={addStagePayout}
-                          onChange={(e) => setAddStagePayout(e.target.value)}
-                          placeholder="السعر"
-                          inputMode="decimal"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Button
-                          type="button"
-                          className="w-full gap-2"
-                          onClick={addStage}
-                          disabled={!addStageId || psLoading}
-                        >
-                          {psLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                <div className="space-y-5">
+                  <div className="rounded-3xl border border-border/70 bg-muted/20 p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-16 w-16 overflow-hidden rounded-2xl border border-border/70 bg-muted">
+                          {active.image_url ? (
+                            <Image
+                              src={active.image_url}
+                              alt={active.name || ""}
+                              width={64}
+                              height={64}
+                              className="h-16 w-16 object-cover"
+                            />
                           ) : (
-                            <Plus className="h-4 w-4" />
+                            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                              <Package className="h-5 w-5" />
+                            </div>
                           )}
-                        </Button>
+                        </div>
+
+                        <div className="min-w-0 text-right">
+                          <div className="truncate text-base font-bold md:text-lg">
+                            {active.name || "—"}
+                          </div>
+                          <div className="mt-1 break-all text-xs text-muted-foreground">
+                            SKU: {active.sku || "—"} • {active.salla_product_id}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right lg:text-left">
+                        <div className="text-sm text-muted-foreground">
+                          السعر الحالي
+                        </div>
+                        <div className="text-base font-bold">
+                          {fmtMoney(active.price, active.currency)}
+                        </div>
                       </div>
                     </div>
+                  </div>
 
-                    <Separator />
+                  <div className="grid gap-5 2xl:grid-cols-[1.15fr_0.85fr]">
+                    <SectionShell
+                      icon={Workflow}
+                      title="المراحل"
+                      subtitle="ربط المنتج بمراحل الإنتاج وتحديد سعر المرحلة"
+                    >
+                      <div className="space-y-4">
+                        <div className="grid gap-2 lg:grid-cols-12">
+                          <div className="lg:col-span-5">
+                            <select
+                              className="h-11 w-full rounded-2xl border border-border/70 bg-background px-3 text-sm outline-none"
+                              value={addStageId}
+                              onChange={(e) => setAddStageId(e.target.value)}
+                            >
+                              <option value="">اختر مرحلة</option>
+                              {stages.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                    {psLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        جاري التحميل...
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {productStages.map((r) => (
-                          <div
-                            key={r.id}
-                            className="flex items-center gap-2 rounded-lg border p-2"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium">
-                                {r.stages?.name || r.stage_id}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                ترتيب: {r.sort_order}
-                              </div>
-                            </div>
-
+                          <div className="lg:col-span-4">
                             <Input
-                              className="w-28"
-                              inputMode="decimal"
-                              value={
-                                r.payout_amount == null
-                                  ? ""
-                                  : String(r.payout_amount)
-                              }
+                              value={addStagePayout}
                               onChange={(e) =>
-                                patchStage(r.id, {
-                                  payout_amount:
-                                    e.target.value === ""
-                                      ? null
-                                      : Number(e.target.value),
-                                })
+                                setAddStagePayout(e.target.value)
                               }
                               placeholder="السعر"
+                              inputMode="decimal"
+                              className="h-11 rounded-2xl border-border/70"
                             />
-
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={!!r.enabled}
-                                onCheckedChange={(v) =>
-                                  patchStage(r.id, { enabled: v })
-                                }
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                onClick={() => deleteStage(r.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
                           </div>
-                        ))}
 
-                        {!productStages.length ? (
+                          <div className="lg:col-span-3">
+                            <Button
+                              type="button"
+                              className="h-11 w-full rounded-2xl gap-2"
+                              onClick={addStage}
+                              disabled={!addStageId || psLoading}
+                            >
+                              {psLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Plus className="h-4 w-4" />
+                              )}
+                              إضافة
+                            </Button>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        {psLoading ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            جاري التحميل...
+                          </div>
+                        ) : productStages.length === 0 ? (
                           <div className="text-sm text-muted-foreground">
                             لا يوجد مراحل مربوطة.
                           </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                        ) : (
+                          <div className="space-y-3">
+                            {productStages.map((r) => (
+                              <div
+                                key={r.id}
+                                className="rounded-2xl border border-border/70 p-3"
+                              >
+                                <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+                                  <div className="min-w-0 flex-1 text-right">
+                                    <div className="truncate text-sm font-bold">
+                                      {r.stages?.name || r.stage_id}
+                                    </div>
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      ترتيب: {r.sort_order}
+                                    </div>
+                                  </div>
 
-                {/* مواد المنتج */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">
-                      المخزون (المواد)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="grid grid-cols-12 gap-2">
-                      <div className="col-span-7">
-                        <select
-                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                          value={addMaterialId}
-                          onChange={(e) => setAddMaterialId(e.target.value)}
-                        >
-                          <option value="">اختر مادة</option>
-                          {materials.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-3">
-                        <Input
-                          value={addMaterialQty}
-                          onChange={(e) => setAddMaterialQty(e.target.value)}
-                          placeholder="كم/قطعة"
-                          inputMode="decimal"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Button
-                          type="button"
-                          className="w-full gap-2"
-                          onClick={addMaterial}
-                          disabled={!addMaterialId || pmLoading}
-                        >
-                          {pmLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Plus className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
+                                  <Input
+                                    className="h-10 w-full rounded-xl border-border/70 xl:w-36"
+                                    inputMode="decimal"
+                                    value={
+                                      r.payout_amount == null
+                                        ? ""
+                                        : String(r.payout_amount)
+                                    }
+                                    onChange={(e) =>
+                                      patchStage(r.id, {
+                                        payout_amount:
+                                          e.target.value === ""
+                                            ? null
+                                            : Number(e.target.value),
+                                      })
+                                    }
+                                    placeholder="السعر"
+                                  />
 
-                    <Separator />
+                                  <div className="flex flex-wrap items-center justify-end gap-2">
+                                    <div className="flex items-center gap-2 rounded-xl border border-border/70 px-3 py-2">
+                                      <span className="text-xs text-muted-foreground">
+                                        تفعيل
+                                      </span>
+                                      <Switch
+                                        checked={!!r.enabled}
+                                        onCheckedChange={(v) =>
+                                          patchStage(r.id, { enabled: v })
+                                        }
+                                      />
+                                    </div>
 
-                    {pmLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        جاري التحميل...
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {productMaterials.map((r) => (
-                          <div
-                            key={r.id}
-                            className="flex items-center gap-2 rounded-lg border p-2"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium">
-                                {r.materials?.name || r.material_id}
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="rounded-xl border-border/70"
+                                      onClick={() => deleteStage(r.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                استهلاك لكل قطعة
-                              </div>
-                            </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </SectionShell>
 
+                    <SectionShell
+                      icon={Boxes}
+                      title="المخزون (المواد)"
+                      subtitle="ربط المنتج بالمواد الخام وتحديد الاستهلاك لكل قطعة"
+                    >
+                      <div className="space-y-4">
+                        <div className="grid gap-2 lg:grid-cols-12">
+                          <div className="lg:col-span-5">
+                            <select
+                              className="h-11 w-full rounded-2xl border border-border/70 bg-background px-3 text-sm outline-none"
+                              value={addMaterialId}
+                              onChange={(e) => setAddMaterialId(e.target.value)}
+                            >
+                              <option value="">اختر مادة</option>
+                              {materials.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="lg:col-span-4">
                             <Input
-                              className="w-28"
-                              inputMode="decimal"
-                              value={String(r.qty_per_piece ?? 0)}
+                              value={addMaterialQty}
                               onChange={(e) =>
-                                patchMaterial(
-                                  r.id,
-                                  e.target.value === ""
-                                    ? 0
-                                    : Number(e.target.value),
-                                )
+                                setAddMaterialQty(e.target.value)
                               }
+                              placeholder="كم/قطعة"
+                              inputMode="decimal"
+                              className="h-11 rounded-2xl border-border/70"
                             />
+                          </div>
 
+                          <div className="lg:col-span-3">
                             <Button
                               type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => deleteMaterial(r.id)}
+                              className="h-11 w-full rounded-2xl gap-2"
+                              onClick={addMaterial}
+                              disabled={!addMaterialId || pmLoading}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              {pmLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Plus className="h-4 w-4" />
+                              )}
+                              إضافة
                             </Button>
                           </div>
-                        ))}
+                        </div>
 
-                        {!productMaterials.length ? (
+                        <Separator />
+
+                        {pmLoading ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            جاري التحميل...
+                          </div>
+                        ) : productMaterials.length === 0 ? (
                           <div className="text-sm text-muted-foreground">
                             لا يوجد مواد مربوطة.
                           </div>
-                        ) : null}
+                        ) : (
+                          <div className="space-y-3">
+                            {productMaterials.map((r) => (
+                              <div
+                                key={r.id}
+                                className="rounded-2xl border border-border/70 p-3"
+                              >
+                                <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+                                  <div className="min-w-0 flex-1 text-right">
+                                    <div className="truncate text-sm font-bold">
+                                      {r.materials?.name || r.material_id}
+                                    </div>
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      استهلاك لكل قطعة
+                                    </div>
+                                  </div>
+
+                                  <Input
+                                    className="h-10 w-full rounded-xl border-border/70 xl:w-36"
+                                    inputMode="decimal"
+                                    value={String(r.qty_per_piece ?? 0)}
+                                    onChange={(e) =>
+                                      patchMaterial(
+                                        r.id,
+                                        e.target.value === ""
+                                          ? 0
+                                          : Number(e.target.value),
+                                      )
+                                    }
+                                  />
+
+                                  <div className="flex justify-end">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="rounded-xl border-border/70"
+                                      onClick={() => deleteMaterial(r.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </SectionShell>
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}

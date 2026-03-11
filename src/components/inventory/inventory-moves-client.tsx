@@ -9,6 +9,11 @@ import {
   Download,
   Loader2,
   Printer,
+  Boxes,
+  TrendingDown,
+  TrendingUp,
+  Scale,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -286,6 +291,35 @@ function buildCsv(rows: InventoryMoveApiRow[], columns: ColumnVisibility) {
   );
 }
 
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+}) {
+  return (
+    <Card className="rounded-3xl border-border/70 shadow-sm print-card">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm text-muted-foreground">{title}</div>
+            <div className="mt-2 text-3xl font-black tracking-tight">
+              {value}
+            </div>
+          </div>
+
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function InventoryMovesClient() {
   const [loading, setLoading] = useState(true);
   const [moves, setMoves] = useState<InventoryMoveApiRow[]>([]);
@@ -308,14 +342,8 @@ export default function InventoryMovesClient() {
       const params = new URLSearchParams();
       params.set("limit", "500");
 
-      if (materialId !== "all") {
-        params.set("material_id", materialId);
-      }
-
-      if (executorId !== "all") {
-        params.set("created_by", executorId);
-      }
-
+      if (materialId !== "all") params.set("material_id", materialId);
+      if (executorId !== "all") params.set("created_by", executorId);
       if (fromDate) params.set("from", fromDate);
       if (toDate) params.set("to", toDate);
 
@@ -384,7 +412,7 @@ export default function InventoryMovesClient() {
   }
 
   return (
-    <div className="space-y-4 print:space-y-2">
+    <div dir="rtl" className="space-y-6 print:space-y-2">
       <style jsx global>{`
         @media print {
           @page {
@@ -519,20 +547,36 @@ export default function InventoryMovesClient() {
         }
       `}</style>
 
-      <div className="print-hidden flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">حركات المخزون</h1>
-          <p className="text-sm text-muted-foreground">
-            تقرير حركة الأقمشة دخولًا وخروجًا
-          </p>
-        </div>
+      {/* Header */}
+      <div className="print-hidden overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 md:p-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="space-y-3 text-right">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Boxes className="h-3.5 w-3.5" />
+              تقرير شامل لحركة الأقمشة
+            </div>
 
-        <Button asChild variant="outline">
-          <Link href="/dashboard/inventory" className="gap-2">
-            <ArrowRight className="h-4 w-4" />
-            الرجوع
-          </Link>
-        </Button>
+            <div>
+              <h1 className="text-2xl font-black tracking-tight md:text-3xl">
+                حركات المخزون
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-base">
+                متابعة حركة الأقمشة دخولًا وخروجًا مع الطباعة والتصدير
+              </p>
+            </div>
+          </div>
+
+          <Button
+            asChild
+            variant="outline"
+            className="h-11 rounded-2xl border-border/70"
+          >
+            <Link href="/dashboard/inventory" className="gap-2">
+              <ArrowRight className="h-4 w-4" />
+              الرجوع
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="print-page-title hidden">
@@ -540,22 +584,26 @@ export default function InventoryMovesClient() {
         <p>تقرير حركة الأقمشة دخولًا وخروجًا</p>
       </div>
 
-      <Card className="print-card print-filter-box">
+      {/* Filters */}
+      <Card className="print-card print-filter-box rounded-3xl border-border/70 shadow-sm">
         <CardHeader className="pb-2 print:hidden">
-          <CardTitle className="text-base">فلاتر التقرير</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <SlidersHorizontal className="h-4 w-4" />
+            فلاتر التقرير
+          </CardTitle>
         </CardHeader>
 
         <CardContent className="space-y-4 print:p-0">
           <div className="print-hidden grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <div>
-              <div className="mb-1 text-sm">نوع الحركة</div>
+              <div className="mb-2 text-sm font-medium">نوع الحركة</div>
               <Select
                 value={directionFilter}
                 onValueChange={(value: DirectionFilter) =>
                   setDirectionFilter(value)
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-11 rounded-2xl border-border/70">
                   <SelectValue placeholder="نوع الحركة" />
                 </SelectTrigger>
                 <SelectContent>
@@ -567,9 +615,9 @@ export default function InventoryMovesClient() {
             </div>
 
             <div>
-              <div className="mb-1 text-sm">القماش</div>
+              <div className="mb-2 text-sm font-medium">القماش</div>
               <Select value={materialId} onValueChange={setMaterialId}>
-                <SelectTrigger>
+                <SelectTrigger className="h-11 rounded-2xl border-border/70">
                   <SelectValue placeholder="اختر القماش" />
                 </SelectTrigger>
                 <SelectContent>
@@ -584,9 +632,9 @@ export default function InventoryMovesClient() {
             </div>
 
             <div>
-              <div className="mb-1 text-sm">المنفذ</div>
+              <div className="mb-2 text-sm font-medium">المنفذ</div>
               <Select value={executorId} onValueChange={setExecutorId}>
-                <SelectTrigger>
+                <SelectTrigger className="h-11 rounded-2xl border-border/70">
                   <SelectValue placeholder="اختر المنفذ" />
                 </SelectTrigger>
                 <SelectContent>
@@ -601,25 +649,31 @@ export default function InventoryMovesClient() {
             </div>
 
             <div>
-              <div className="mb-1 text-sm">من تاريخ</div>
+              <div className="mb-2 text-sm font-medium">من تاريخ</div>
               <Input
                 type="date"
+                className="h-11 rounded-2xl border-border/70"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
               />
             </div>
 
             <div>
-              <div className="mb-1 text-sm">إلى تاريخ</div>
+              <div className="mb-2 text-sm font-medium">إلى تاريخ</div>
               <Input
                 type="date"
+                className="h-11 rounded-2xl border-border/70"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
               />
             </div>
 
             <div className="flex items-end">
-              <Button className="w-full" onClick={load} disabled={loading}>
+              <Button
+                className="h-11 w-full rounded-2xl"
+                onClick={load}
+                disabled={loading}
+              >
                 {loading ? (
                   <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                 ) : null}
@@ -650,21 +704,28 @@ export default function InventoryMovesClient() {
           <div className="print-hidden flex flex-wrap items-center justify-end gap-2">
             <Button
               variant="outline"
-              className="gap-2"
+              className="h-11 rounded-2xl gap-2 border-border/70"
               onClick={handleExportCsv}
             >
               <Download className="h-4 w-4" />
               Excel
             </Button>
 
-            <Button variant="outline" className="gap-2" onClick={handlePrint}>
+            <Button
+              variant="outline"
+              className="h-11 rounded-2xl gap-2 border-border/70"
+              onClick={handlePrint}
+            >
               <Printer className="h-4 w-4" />
               طباعة
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-2xl gap-2 border-border/70"
+                >
                   الأعمدة
                   <ChevronDown className="h-4 w-4" />
                 </Button>
@@ -820,33 +881,23 @@ export default function InventoryMovesClient() {
         </CardContent>
       </Card>
 
-      <div className="print-hidden grid gap-3 md:grid-cols-3 print-summary-cards">
-        <Card className="print-card">
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">إجمالي المدخل</div>
-            <div className="mt-2 text-2xl font-semibold">
-              {formatQty(summary.totalIn)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="print-card">
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">إجمالي المخرج</div>
-            <div className="mt-2 text-2xl font-semibold">
-              {formatQty(summary.totalOut)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="print-card">
-          <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">الرصيد النهائي</div>
-            <div className="mt-2 text-2xl font-semibold">
-              {formatQty(summary.latestBalance)}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Summary */}
+      <div className="print-hidden print-summary-cards grid gap-4 md:grid-cols-3">
+        <StatCard
+          title="إجمالي المدخل"
+          value={formatQty(summary.totalIn)}
+          icon={TrendingUp}
+        />
+        <StatCard
+          title="إجمالي المخرج"
+          value={formatQty(summary.totalOut)}
+          icon={TrendingDown}
+        />
+        <StatCard
+          title="الرصيد النهائي"
+          value={formatQty(summary.latestBalance)}
+          icon={Scale}
+        />
       </div>
 
       <div className="print-summary-text hidden">
@@ -866,14 +917,15 @@ export default function InventoryMovesClient() {
         </div>
       </div>
 
-      <Card className="print-card">
+      {/* Table */}
+      <Card className="print-card overflow-hidden rounded-3xl border-border/70 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">سجل الحركات</CardTitle>
         </CardHeader>
 
         <CardContent className="print:p-0">
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               جاري التحميل...
             </div>
@@ -882,60 +934,69 @@ export default function InventoryMovesClient() {
               {error}
             </div>
           ) : (
-            <div className="print-table-wrap overflow-auto rounded-xl border">
+            <div className="print-table-wrap overflow-auto rounded-2xl border border-border/70">
               <table className="print-table w-full min-w-[1200px] text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40">
+                <thead className="bg-muted/30">
+                  <tr className="border-b border-border/60">
                     {columns.date && (
-                      <th className="p-3 text-center">التاريخ</th>
+                      <th className="p-3 text-center font-semibold">التاريخ</th>
                     )}
                     {columns.material && (
-                      <th className="p-3 text-right">القماش</th>
+                      <th className="p-3 text-right font-semibold">القماش</th>
                     )}
                     {columns.unit && (
-                      <th className="p-3 text-center">الوحدة</th>
+                      <th className="p-3 text-center font-semibold">الوحدة</th>
                     )}
                     {columns.move && (
-                      <th className="p-3 text-center">الحركة</th>
+                      <th className="p-3 text-center font-semibold">الحركة</th>
                     )}
                     {columns.direction && (
-                      <th className="p-3 text-center">الاتجاه</th>
+                      <th className="p-3 text-center font-semibold">الاتجاه</th>
                     )}
                     {columns.quantity && (
-                      <th className="p-3 text-center">الكمية</th>
+                      <th className="p-3 text-center font-semibold">الكمية</th>
                     )}
                     {columns.balance && (
-                      <th className="p-3 text-center">المتبقي</th>
+                      <th className="p-3 text-center font-semibold">المتبقي</th>
                     )}
                     {columns.cost && (
-                      <th className="p-3 text-center">التكلفة</th>
+                      <th className="p-3 text-center font-semibold">التكلفة</th>
                     )}
                     {columns.value && (
-                      <th className="p-3 text-center">القيمة</th>
+                      <th className="p-3 text-center font-semibold">القيمة</th>
                     )}
                     {columns.executor && (
-                      <th className="p-3 text-right">المنفذ</th>
+                      <th className="p-3 text-right font-semibold">المنفذ</th>
                     )}
                     {columns.user && (
-                      <th className="p-3 text-right">المستخدم</th>
+                      <th className="p-3 text-right font-semibold">المستخدم</th>
                     )}
                     {columns.stage && (
-                      <th className="p-3 text-right">المرحلة</th>
+                      <th className="p-3 text-right font-semibold">المرحلة</th>
                     )}
-                    {columns.sku && <th className="p-3 text-right">SKU</th>}
-                    {columns.order && <th className="p-3 text-right">الطلب</th>}
+                    {columns.sku && (
+                      <th className="p-3 text-right font-semibold">SKU</th>
+                    )}
+                    {columns.order && (
+                      <th className="p-3 text-right font-semibold">الطلب</th>
+                    )}
                     {columns.piece && (
-                      <th className="p-3 text-right">القطعة</th>
+                      <th className="p-3 text-right font-semibold">القطعة</th>
                     )}
-                    {columns.note && <th className="p-3 text-right">ملاحظة</th>}
+                    {columns.note && (
+                      <th className="p-3 text-right font-semibold">ملاحظة</th>
+                    )}
                   </tr>
                 </thead>
 
                 <tbody>
                   {filteredMoves.map((r) => (
-                    <tr key={r.id} className="border-b align-top">
+                    <tr
+                      key={r.id}
+                      className="border-b border-border/60 align-top transition hover:bg-muted/10"
+                    >
                       {columns.date && (
-                        <td className="p-3 text-center whitespace-nowrap">
+                        <td className="whitespace-nowrap p-3 text-center">
                           {new Date(r.created_at).toLocaleString("ar-SA")}
                         </td>
                       )}
@@ -963,7 +1024,7 @@ export default function InventoryMovesClient() {
                       {columns.direction && (
                         <td className="p-3 text-center">
                           <span
-                            className={`print-direction-badge rounded-md px-2 py-1 text-xs ${directionBadgeClass(
+                            className={`print-direction-badge inline-flex rounded-full px-3 py-1 text-xs font-medium ${directionBadgeClass(
                               r.direction,
                             )}`}
                           >
@@ -1033,7 +1094,7 @@ export default function InventoryMovesClient() {
                   {!filteredMoves.length ? (
                     <tr>
                       <td
-                        className="p-6 text-center text-sm text-muted-foreground"
+                        className="p-10 text-center text-sm text-muted-foreground"
                         colSpan={16}
                       >
                         لا توجد حركات.

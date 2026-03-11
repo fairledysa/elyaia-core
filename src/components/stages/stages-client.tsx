@@ -10,6 +10,8 @@ import {
   Archive,
   Pencil,
   Trash2,
+  Workflow,
+  ArchiveRestore,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +52,39 @@ function rowHint(s: StageRow) {
   if (s.inventory_deduct_enabled) tags.push("خصم مخزون");
   if (s.archived) tags.push("مؤرشف");
   return tags;
+}
+
+function SectionHeader({
+  title,
+  subtitle,
+  icon: Icon,
+  count,
+}: {
+  title: string;
+  subtitle: string;
+  icon: React.ElementType;
+  count?: number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-4">
+      <div className="flex items-center gap-3 text-right">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
+          <Icon className="h-5 w-5" />
+        </div>
+
+        <div>
+          <div className="text-base font-bold md:text-lg">{title}</div>
+          <div className="text-sm text-muted-foreground">{subtitle}</div>
+        </div>
+      </div>
+
+      {typeof count === "number" ? (
+        <div className="rounded-2xl border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          {count}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export default function StagesClient() {
@@ -130,6 +165,7 @@ export default function StagesClient() {
       toast({ title: "تنبيه", description: "اسم المرحلة مطلوب" });
       return;
     }
+
     setSaving(true);
     try {
       if (mode === "create") {
@@ -229,213 +265,257 @@ export default function StagesClient() {
   }
 
   return (
-    <div className="space-y-4" dir="rtl">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">إدارة المراحل</h2>
-          <p className="text-sm text-muted-foreground">
-            إضافة/تعديل/ترتيب/أرشفة
-          </p>
-        </div>
+    <div dir="rtl" className="space-y-6">
+      {/* Header */}
+      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 md:p-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="space-y-3 text-right">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Workflow className="h-3.5 w-3.5" />
+              إدارة مراحل التشغيل والإنتاج
+            </div>
 
-        <Button onClick={openCreate} className="cursor-pointer">
-          <Plus className="me-2 h-4 w-4" />
-          إضافة مرحلة
-        </Button>
+            <div>
+              <h1 className="text-2xl font-black tracking-tight md:text-3xl">
+                إدارة المراحل
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-base">
+                إضافة وتعديل وترتيب وأرشفة مراحل العمل بطريقة واضحة ومنظمة
+              </p>
+            </div>
+          </div>
+
+          <Button onClick={openCreate} className="h-12 rounded-2xl px-5">
+            <Plus className="me-2 h-4 w-4" />
+            إضافة مرحلة
+          </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">المراحل النشطة</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      {/* Active stages */}
+      <Card className="overflow-hidden rounded-3xl border-border/70 shadow-sm">
+        <SectionHeader
+          icon={Workflow}
+          title="المراحل النشطة"
+          subtitle="المراحل المستخدمة حاليًا في التشغيل"
+          count={activeItems.length}
+        />
+
+        <CardContent className="p-4">
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               جاري التحميل...
             </div>
           ) : activeItems.length === 0 ? (
-            <div className="text-sm text-muted-foreground">لا توجد مراحل.</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              لا توجد مراحل.
+            </div>
           ) : (
-            activeItems.map((s, idx) => (
-              <div
-                key={s.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="font-medium">{s.name}</div>
-                    {rowHint(s).map((t) => (
-                      <Badge key={t} variant="secondary">
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    ترتيب: {s.sort_order}
+            <div className="space-y-3">
+              {activeItems.map((s, idx) => (
+                <div
+                  key={s.id}
+                  className="rounded-2xl border border-border/70 p-4 transition hover:bg-muted/20"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 text-right">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-base font-bold">{s.name}</div>
+
+                        {rowHint(s).map((t) => (
+                          <Badge
+                            key={t}
+                            variant="secondary"
+                            className="rounded-full px-3 py-1 text-xs"
+                          >
+                            {t}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        ترتيب المرحلة: {s.sort_order}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 rounded-xl p-0"
+                        disabled={idx === 0}
+                        onClick={() => move(s.id, "up")}
+                        title="أعلى"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 rounded-xl p-0"
+                        disabled={idx === activeItems.length - 1}
+                        onClick={() => move(s.id, "down")}
+                        title="أسفل"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 rounded-xl p-0"
+                        onClick={() => openEdit(s)}
+                        title="تعديل"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10 rounded-xl p-0"
+                        onClick={() => setArchived(s, true)}
+                        title="أرشفة"
+                      >
+                        <Archive className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-10 w-10 rounded-xl p-0"
+                        onClick={() => del(s)}
+                        title="حذف"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 w-9 p-0 cursor-pointer"
-                    disabled={idx === 0}
-                    onClick={() => move(s.id, "up")}
-                    title="أعلى"
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 w-9 p-0 cursor-pointer"
-                    disabled={idx === activeItems.length - 1}
-                    onClick={() => move(s.id, "down")}
-                    title="أسفل"
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 w-9 p-0 cursor-pointer"
-                    onClick={() => openEdit(s)}
-                    title="تعديل"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 w-9 p-0 cursor-pointer"
-                    onClick={() => setArchived(s, true)}
-                    title="أرشفة"
-                  >
-                    <Archive className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="h-9 w-9 p-0 cursor-pointer"
-                    onClick={() => del(s)}
-                    title="حذف"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
 
+      {/* Archived */}
       {archivedItems.length ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">مؤرشفة</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {archivedItems.map((s) => (
-              <div
-                key={s.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium">{s.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    ترتيب: {s.sort_order}
+        <Card className="overflow-hidden rounded-3xl border-border/70 shadow-sm">
+          <SectionHeader
+            icon={ArchiveRestore}
+            title="المراحل المؤرشفة"
+            subtitle="مراحل محفوظة خارج التشغيل الحالي"
+            count={archivedItems.length}
+          />
+
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              {archivedItems.map((s) => (
+                <div
+                  key={s.id}
+                  className="rounded-2xl border border-border/70 p-4 transition hover:bg-muted/20"
+                >
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div className="text-right">
+                      <div className="font-bold">{s.name}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        ترتيب المرحلة: {s.sort_order}
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => setArchived(s, false)}
+                      className="h-10 rounded-xl"
+                    >
+                      إلغاء الأرشفة
+                    </Button>
                   </div>
                 </div>
-
-                <Button
-                  variant="outline"
-                  onClick={() => setArchived(s, false)}
-                  className="cursor-pointer"
-                >
-                  إلغاء الأرشفة
-                </Button>
-              </div>
-            ))}
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}
 
+      {/* Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="p-0 overflow-hidden">
-          <div className="border-b px-6 py-4">
-            <DialogHeader>
-              <DialogTitle>
+        <DialogContent dir="rtl" className="overflow-hidden p-0 sm:max-w-xl">
+          <div className="border-b border-border/60 px-6 py-5">
+            <DialogHeader className="text-right">
+              <DialogTitle className="text-xl font-bold">
                 {mode === "create" ? "إضافة مرحلة" : "تعديل مرحلة"}
               </DialogTitle>
-              <DialogDescription>إعدادات بسيطة ومباشرة</DialogDescription>
+              <DialogDescription className="pt-1">
+                إعدادات المرحلة الأساسية الخاصة بالتشغيل
+              </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="px-6 py-5 space-y-4">
+          <div className="space-y-5 px-6 py-5">
             <div className="space-y-2">
               <Label>اسم المرحلة</Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="مثال: قصاص"
+                className="h-11 rounded-2xl"
               />
             </div>
 
             <Separator />
 
-            <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
-              <div className="space-y-1">
-                <div className="text-sm font-medium">منع القفز</div>
-                <div className="text-xs text-muted-foreground">
-                  لا يسمح بتنفيذ المرحلة إلا بعد إكمال ما قبلها.
+            <div className="rounded-2xl border border-border/70 px-4 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1 text-right">
+                  <div className="text-sm font-semibold">منع القفز</div>
+                  <div className="text-xs leading-6 text-muted-foreground">
+                    لا يسمح بتنفيذ المرحلة إلا بعد إكمال المرحلة السابقة
+                  </div>
                 </div>
-              </div>
-              <div className="shrink-0">
-                <Switch
-                  checked={requirePrev}
-                  onCheckedChange={setRequirePrev}
-                  className="cursor-pointer"
-                />
+
+                <div className="shrink-0">
+                  <Switch
+                    checked={requirePrev}
+                    onCheckedChange={setRequirePrev}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
-              <div className="space-y-1">
-                <div className="text-sm font-medium">خصم مخزون</div>
-                <div className="text-xs text-muted-foreground">
-                  عند تنفيذ المرحلة يتم خصم المواد الخام.
+            <div className="rounded-2xl border border-border/70 px-4 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1 text-right">
+                  <div className="text-sm font-semibold">خصم مخزون</div>
+                  <div className="text-xs leading-6 text-muted-foreground">
+                    عند تنفيذ هذه المرحلة يتم خصم المواد الخام المرتبطة
+                  </div>
                 </div>
-              </div>
-              <div className="shrink-0">
-                <Switch
-                  checked={deduct}
-                  onCheckedChange={setDeduct}
-                  className="cursor-pointer"
-                />
+
+                <div className="shrink-0">
+                  <Switch checked={deduct} onCheckedChange={setDeduct} />
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="border-t px-6 py-4">
-            <DialogFooter>
+          <div className="border-t border-border/60 px-6 py-4">
+            <DialogFooter className="flex-row-reverse gap-2 sm:justify-start">
               <Button
                 variant="outline"
                 onClick={() => setOpen(false)}
                 disabled={saving}
-                className="cursor-pointer"
+                className="h-11 rounded-2xl"
               >
                 إلغاء
               </Button>
+
               <Button
                 onClick={submit}
                 disabled={saving}
-                className="cursor-pointer"
+                className="h-11 rounded-2xl px-5"
               >
                 {saving ? (
                   <span className="inline-flex items-center gap-2">

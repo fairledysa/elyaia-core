@@ -3,6 +3,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  Wallet,
+  Search,
+  CalendarDays,
+  RefreshCcw,
+  TrendingUp,
+  TrendingDown,
+  HandCoins,
+  Users,
+} from "lucide-react";
 
 type SummaryResponse = {
   ok?: boolean;
@@ -59,6 +69,37 @@ function formatDate(value: string | null | undefined) {
     2,
     "0",
   )}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  valueClassName = "",
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-border/70 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-right">
+          <div className="text-sm text-muted-foreground">{title}</div>
+          <div
+            className={`mt-2 text-3xl font-black tracking-tight ${valueClassName}`}
+          >
+            {value}
+          </div>
+        </div>
+
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function FinancePage() {
@@ -133,6 +174,7 @@ export default function FinancePage() {
     setSearch("");
     setFrom("");
     setTo("");
+
     setTimeout(() => {
       const params = new URLSearchParams();
       fetch(`/api/finance/summary?${params.toString()}`, {
@@ -140,159 +182,210 @@ export default function FinancePage() {
         cache: "no-store",
       });
     }, 0);
+
     setTimeout(loadFinance, 0);
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">المالية</h1>
-        <p className="text-muted-foreground">
-          إدارة الرواتب والمحافظ والسلف والخصومات والصرف
-        </p>
+    <div dir="rtl" className="space-y-6 p-4 md:p-6">
+      {/* Header */}
+      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 md:p-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="space-y-3 text-right">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Wallet className="h-3.5 w-3.5" />
+              إدارة المحافظ والرواتب والصرف
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-black tracking-tight md:text-3xl">
+                المالية
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-base">
+                إدارة الرواتب والمحافظ والسلف والخصومات والصرف ومتابعة أرصدة
+                العاملين
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="rounded border px-3 py-2"
-          placeholder="بحث عامل"
-        />
-        <input
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          type="date"
-          className="rounded border px-3 py-2"
-        />
-        <input
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          type="date"
-          className="rounded border px-3 py-2"
-        />
-        <button
-          onClick={handleApplyFilters}
-          className="rounded bg-black px-4 py-2 text-white"
-          type="button"
-        >
-          تصفية
-        </button>
-        <button
-          onClick={handleResetFilters}
-          className="rounded border px-4 py-2"
-          type="button"
-        >
-          تصفير
-        </button>
+      {/* Filters */}
+      <div className="rounded-3xl border border-border/70 bg-white p-5 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="relative xl:col-span-2">
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-12 w-full rounded-2xl border border-border/70 bg-background pr-10 pl-3 text-sm outline-none transition focus:border-foreground/30"
+              placeholder="بحث عامل"
+            />
+          </div>
+
+          <div className="relative">
+            <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              type="date"
+              className="h-12 w-full rounded-2xl border border-border/70 bg-background pr-10 pl-3 text-sm outline-none transition focus:border-foreground/30"
+            />
+          </div>
+
+          <div className="relative">
+            <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              type="date"
+              className="h-12 w-full rounded-2xl border border-border/70 bg-background pr-10 pl-3 text-sm outline-none transition focus:border-foreground/30"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleApplyFilters}
+              className="h-12 flex-1 rounded-2xl bg-black px-4 text-sm font-medium text-white transition hover:opacity-90"
+              type="button"
+            >
+              تصفية
+            </button>
+
+            <button
+              onClick={handleResetFilters}
+              className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-border/70 bg-white px-4 text-sm font-medium transition hover:bg-muted/40"
+              type="button"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              تصفير
+            </button>
+          </div>
+        </div>
       </div>
 
       {error ? (
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-5">
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">إجمالي المستحقات</p>
-          <h2 className="text-xl font-bold text-green-700">
-            {loading ? "..." : `${formatMoney(summary?.totalCredit)} ر.س`}
-          </h2>
-        </div>
+      {/* Stats */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          title="إجمالي المستحقات"
+          value={loading ? "..." : `${formatMoney(summary?.totalCredit)} ر.س`}
+          icon={TrendingUp}
+          valueClassName="text-emerald-700"
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">السلف والخصومات</p>
-          <h2 className="text-xl font-bold text-red-500">
-            {loading ? "..." : `${formatMoney(summary?.totalDebit)} ر.س`}
-          </h2>
-        </div>
+        <StatCard
+          title="السلف والخصومات"
+          value={loading ? "..." : `${formatMoney(summary?.totalDebit)} ر.س`}
+          icon={TrendingDown}
+          valueClassName="text-red-600"
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">المصروف</p>
-          <h2 className="text-xl font-bold">
-            {loading ? "..." : `${formatMoney(summary?.totalPayout)} ر.س`}
-          </h2>
-        </div>
+        <StatCard
+          title="المصروف"
+          value={loading ? "..." : `${formatMoney(summary?.totalPayout)} ر.س`}
+          icon={HandCoins}
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">الرصيد المتبقي</p>
-          <h2 className="text-xl font-bold text-blue-700">
-            {loading ? "..." : `${formatMoney(summary?.balance)} ر.س`}
-          </h2>
-        </div>
+        <StatCard
+          title="الرصيد المتبقي"
+          value={loading ? "..." : `${formatMoney(summary?.balance)} ر.س`}
+          icon={Wallet}
+          valueClassName="text-blue-700"
+        />
 
-        <div className="rounded border p-4">
-          <p className="text-sm text-muted-foreground">عدد الموظفين</p>
-          <h2 className="text-xl font-bold">
-            {loading ? "..." : (summary?.employeeCount ?? 0)}
-          </h2>
-        </div>
+        <StatCard
+          title="عدد الموظفين"
+          value={loading ? "..." : String(summary?.employeeCount ?? 0)}
+          icon={Users}
+        />
       </div>
 
-      <div className="overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted">
-            <tr>
-              <th className="p-3 text-right">العامل</th>
-              <th className="text-right">المرحلة</th>
-              <th className="text-right">نوع الدفع</th>
-              <th className="text-right">المنفذ</th>
-              <th className="text-right">له</th>
-              <th className="text-right">عليه</th>
-              <th className="text-right">المصروف</th>
-              <th className="text-right">الرصيد</th>
-              <th className="text-right">آخر حركة</th>
-              <th className="text-right"></th>
-            </tr>
-          </thead>
+      {/* Table */}
+      <div className="overflow-hidden rounded-3xl border border-border/70 bg-white shadow-sm">
+        <div className="border-b border-border/60 px-5 py-4">
+          <div className="text-lg font-bold">ملخص حسابات الموظفين</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            كشف سريع لمستحقات العاملين والخصومات والمصروف والأرصدة
+          </div>
+        </div>
 
-          <tbody>
-            {loading ? (
-              <tr className="border-t">
-                <td
-                  className="p-4 text-center text-muted-foreground"
-                  colSpan={10}
-                >
-                  جاري تحميل البيانات...
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1100px] text-sm">
+            <thead className="bg-muted/30">
+              <tr className="border-b border-border/60">
+                <th className="p-3 text-right font-semibold">العامل</th>
+                <th className="p-3 text-right font-semibold">المرحلة</th>
+                <th className="p-3 text-right font-semibold">نوع الدفع</th>
+                <th className="p-3 text-right font-semibold">المنفذ</th>
+                <th className="p-3 text-right font-semibold">له</th>
+                <th className="p-3 text-right font-semibold">عليه</th>
+                <th className="p-3 text-right font-semibold">المصروف</th>
+                <th className="p-3 text-right font-semibold">الرصيد</th>
+                <th className="p-3 text-right font-semibold">آخر حركة</th>
+                <th className="p-3 text-right font-semibold"></th>
               </tr>
-            ) : rows && rows.length > 0 ? (
-              rows.map((row) => (
-                <tr key={row.employeeId} className="border-t">
-                  <td className="p-3 font-medium">{row.name || "-"}</td>
-                  <td>{row.stageName || "-"}</td>
-                  <td>{mapPayType(row.payType)}</td>
-                  <td>{row.completedCount}</td>
-                  <td className="text-green-700">{formatMoney(row.credit)}</td>
-                  <td className="text-red-600">{formatMoney(row.debit)}</td>
-                  <td>{formatMoney(row.payout)}</td>
-                  <td className="font-bold text-blue-700">
-                    {formatMoney(row.balance)}
-                  </td>
-                  <td>{formatDate(row.lastMoveAt)}</td>
-                  <td>
-                    <Link
-                      className="text-blue-600 hover:underline"
-                      href={`/dashboard/finance/employees/${row.employeeId}`}
-                    >
-                      كشف الحساب
-                    </Link>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr className="border-t border-border/60">
+                  <td
+                    className="p-6 text-center text-muted-foreground"
+                    colSpan={10}
+                  >
+                    جاري تحميل البيانات...
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr className="border-t">
-                <td
-                  className="p-4 text-center text-muted-foreground"
-                  colSpan={10}
-                >
-                  لا توجد بيانات
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ) : rows && rows.length > 0 ? (
+                rows.map((row) => (
+                  <tr
+                    key={row.employeeId}
+                    className="border-t border-border/60 transition hover:bg-muted/10"
+                  >
+                    <td className="p-3 font-medium">{row.name || "-"}</td>
+                    <td className="p-3">{row.stageName || "-"}</td>
+                    <td className="p-3">{mapPayType(row.payType)}</td>
+                    <td className="p-3">{row.completedCount}</td>
+                    <td className="p-3 font-medium text-emerald-700">
+                      {formatMoney(row.credit)}
+                    </td>
+                    <td className="p-3 font-medium text-red-600">
+                      {formatMoney(row.debit)}
+                    </td>
+                    <td className="p-3">{formatMoney(row.payout)}</td>
+                    <td className="p-3 font-bold text-blue-700">
+                      {formatMoney(row.balance)}
+                    </td>
+                    <td className="p-3">{formatDate(row.lastMoveAt)}</td>
+                    <td className="p-3">
+                      <Link
+                        className="font-medium text-blue-600 hover:underline"
+                        href={`/dashboard/finance/employees/${row.employeeId}`}
+                      >
+                        كشف الحساب
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-t border-border/60">
+                  <td
+                    className="p-6 text-center text-muted-foreground"
+                    colSpan={10}
+                  >
+                    لا توجد بيانات
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

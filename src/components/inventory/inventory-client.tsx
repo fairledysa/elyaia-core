@@ -26,6 +26,10 @@ import {
   Plus,
   Search,
   Trash2,
+  Boxes,
+  AlertTriangle,
+  Package,
+  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -180,6 +184,42 @@ const emptyReceiveForm: ReceivePayload = {
   note: "",
 };
 
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  subtitle,
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+  subtitle?: string;
+}) {
+  return (
+    <Card className="rounded-3xl border-border/70 shadow-sm">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm text-muted-foreground">{title}</div>
+            <div className="mt-2 text-3xl font-black tracking-tight">
+              {value}
+            </div>
+            {subtitle ? (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {subtitle}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function InventoryClient() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<FabricRow[]>([]);
@@ -210,6 +250,7 @@ export default function InventoryClient() {
   async function load() {
     setLoading(true);
     setError(null);
+
     try {
       const res = await j<{ ok: boolean; items: FabricRow[] }>(
         "/api/materials",
@@ -412,7 +453,9 @@ export default function InventoryClient() {
         accessorKey: "name",
         header: "اسم القماش",
         cell: ({ row }) => (
-          <div className="font-medium text-foreground">{row.original.name}</div>
+          <div className="font-semibold text-foreground">
+            {row.original.name}
+          </div>
         ),
       },
       {
@@ -453,7 +496,7 @@ export default function InventoryClient() {
           return (
             <div className="text-center">
               <span
-                className={`inline-flex min-w-16 justify-center rounded-md border px-3 py-1 text-xs ${status.className}`}
+                className={`inline-flex min-w-16 justify-center rounded-full border px-3 py-1 text-xs font-medium ${status.className}`}
               >
                 {status.label}
               </span>
@@ -472,7 +515,11 @@ export default function InventoryClient() {
             <div className="text-center">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-xl"
+                  >
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -513,6 +560,7 @@ export default function InventoryClient() {
                         حذف
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
+
                     <AlertDialogContent dir="rtl">
                       <AlertDialogHeader>
                         <AlertDialogTitle>تأكيد حذف القماش</AlertDialogTitle>
@@ -565,32 +613,49 @@ export default function InventoryClient() {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">الأقمشة</h1>
-            <p className="text-sm text-muted-foreground">
-              إدارة الأقمشة والمتبقي وقيمة المخزون
-            </p>
+    <div dir="rtl" className="space-y-6">
+      {/* Header */}
+      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
+        <div className="flex flex-col gap-5 p-5 md:p-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="space-y-3 text-right">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Boxes className="h-3.5 w-3.5" />
+              إدارة الأقمشة والمخزون المتبقي
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-black tracking-tight md:text-3xl">
+                الأقمشة
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground md:text-base">
+                إدارة الأقمشة والمتبقي وقيمة المخزون وحركة المواد الخام
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button className="gap-2" onClick={() => setAddOpen(true)}>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              className="h-11 rounded-2xl gap-2"
+              onClick={() => setAddOpen(true)}
+            >
               <Plus className="h-4 w-4" />
               إضافة قماش
             </Button>
 
             <Button
               variant="outline"
-              className="gap-2"
+              className="h-11 rounded-2xl gap-2 border-border/70"
               onClick={() => setReceiveOpen(true)}
             >
               <PackagePlus className="h-4 w-4" />
               إدخال قماش
             </Button>
 
-            <Button asChild variant="outline" className="gap-2">
+            <Button
+              asChild
+              variant="outline"
+              className="h-11 rounded-2xl gap-2 border-border/70"
+            >
               <Link href="/dashboard/inventory/moves">
                 <FileText className="h-4 w-4" />
                 تقارير الحركة
@@ -598,137 +663,127 @@ export default function InventoryClient() {
             </Button>
           </div>
         </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="rounded-2xl">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">عدد الأقمشة</div>
-              <div className="mt-2 text-3xl font-semibold">
-                {formatQty(stats.totalCount)}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">المتبقي</div>
-              <div className="mt-2 text-3xl font-semibold">
-                {formatQty(stats.totalRemaining)}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">قيمة المخزون</div>
-              <div className="mt-2 text-3xl font-semibold">
-                {formatMoney(stats.totalValue)}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">حالة المخزون</div>
-              <div className="mt-2 flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-1">
-                  <span className="font-semibold">
-                    {formatQty(stats.lowCount)}
-                  </span>
-                  <span className="text-muted-foreground">منخفض</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="font-semibold">
-                    {formatQty(stats.emptyCount)}
-                  </span>
-                  <span className="text-muted-foreground">نافد</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="rounded-2xl">
-          <CardContent className="pt-6">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <div className="relative xl:col-span-2">
-                <Search className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  className="pr-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="بحث باسم القماش"
-                />
-              </div>
-
-              <div>
-                <Select
-                  value={statusFilter}
-                  onValueChange={(value) =>
-                    setStatusFilter(value as StatusFilter)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="فلترة الحالة" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل الحالات</SelectItem>
-                    <SelectItem value="good">جيد</SelectItem>
-                    <SelectItem value="low">منخفض</SelectItem>
-                    <SelectItem value="empty">نافد</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      <Card className="rounded-2xl">
-        <CardContent className="pt-6">
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          title="عدد الأقمشة"
+          value={formatQty(stats.totalCount)}
+          icon={Package}
+        />
+
+        <StatCard
+          title="المتبقي"
+          value={formatQty(stats.totalRemaining)}
+          icon={Boxes}
+        />
+
+        <StatCard
+          title="قيمة المخزون"
+          value={formatMoney(stats.totalValue)}
+          icon={Wallet}
+        />
+
+        <StatCard
+          title="حالة المخزون"
+          value={`${formatQty(stats.lowCount)} / ${formatQty(stats.emptyCount)}`}
+          subtitle="منخفض / نافد"
+          icon={AlertTriangle}
+        />
+      </div>
+
+      {/* Filters */}
+      <Card className="rounded-3xl border-border/70 shadow-sm">
+        <CardContent className="p-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="relative xl:col-span-2">
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-12 rounded-2xl border-border/70 pr-10"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="بحث باسم القماش"
+              />
+            </div>
+
+            <div>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) =>
+                  setStatusFilter(value as StatusFilter)
+                }
+              >
+                <SelectTrigger className="h-12 rounded-2xl border-border/70">
+                  <SelectValue placeholder="فلترة الحالة" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل الحالات</SelectItem>
+                  <SelectItem value="good">جيد</SelectItem>
+                  <SelectItem value="low">منخفض</SelectItem>
+                  <SelectItem value="empty">نافد</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      <Card className="rounded-3xl border-border/70 shadow-sm overflow-hidden">
+        <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               جاري التحميل...
             </div>
           ) : error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="m-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {error}
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="overflow-hidden rounded-xl border">
+            <div className="space-y-4 p-5">
+              <div className="overflow-hidden rounded-2xl border border-border/70">
                 <Table>
-                  <TableHeader className="bg-muted/40">
+                  <TableHeader className="bg-muted/30">
                     {table.getHeaderGroups().map((headerGroup) => (
                       <TableRow key={headerGroup.id}>
-                        {headerGroup.headers.map((header) => {
-                          return (
-                            <TableHead
-                              key={header.id}
-                              className="text-right font-medium"
-                            >
-                              {header.isPlaceholder ? null : (
-                                <div
-                                  className={
-                                    header.column.getCanSort()
-                                      ? "flex cursor-pointer items-center gap-1 select-none"
-                                      : ""
-                                  }
-                                  onClick={header.column.getToggleSortingHandler()}
-                                >
-                                  {flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext(),
-                                  )}
-                                  {header.column.getCanSort() ? (
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                  ) : null}
-                                </div>
-                              )}
-                            </TableHead>
-                          );
-                        })}
+                        {headerGroup.headers.map((header) => (
+                          <TableHead
+                            key={header.id}
+                            className="text-right font-semibold"
+                          >
+                            {header.isPlaceholder ? null : (
+                              <div
+                                className={
+                                  header.column.getCanSort()
+                                    ? "flex cursor-pointer items-center gap-1 select-none"
+                                    : "flex items-center gap-1"
+                                }
+                                onClick={header.column.getToggleSortingHandler()}
+                              >
+                                {flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
+
+                                {header.column.getCanSort() ? (
+                                  header.column.getIsSorted() === "asc" ? (
+                                    <span className="text-xs text-muted-foreground">
+                                      ↑
+                                    </span>
+                                  ) : header.column.getIsSorted() === "desc" ? (
+                                    <span className="text-xs text-muted-foreground">
+                                      ↓
+                                    </span>
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground opacity-40" />
+                                  )
+                                ) : null}
+                              </div>
+                            )}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     ))}
                   </TableHeader>
@@ -736,7 +791,10 @@ export default function InventoryClient() {
                   <TableBody>
                     {table.getRowModel().rows.length ? (
                       table.getRowModel().rows.map((row) => (
-                        <TableRow key={row.id}>
+                        <TableRow
+                          key={row.id}
+                          className="transition hover:bg-muted/20"
+                        >
                           {row.getVisibleCells().map((cell) => (
                             <TableCell key={cell.id}>
                               {flexRender(
@@ -771,7 +829,7 @@ export default function InventoryClient() {
                     value={String(table.getState().pagination.pageSize)}
                     onValueChange={(value) => table.setPageSize(Number(value))}
                   >
-                    <SelectTrigger className="w-[130px]">
+                    <SelectTrigger className="w-[130px] rounded-xl border-border/70">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -784,6 +842,7 @@ export default function InventoryClient() {
                   <Button
                     variant="outline"
                     size="icon"
+                    className="rounded-xl"
                     onClick={() => table.previousPage()}
                     disabled={!table.getCanPreviousPage()}
                   >
@@ -798,6 +857,7 @@ export default function InventoryClient() {
                   <Button
                     variant="outline"
                     size="icon"
+                    className="rounded-xl"
                     onClick={() => table.nextPage()}
                     disabled={!table.getCanNextPage()}
                   >
@@ -810,118 +870,159 @@ export default function InventoryClient() {
         </CardContent>
       </Card>
 
+      {/* Add Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent dir="rtl" className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>إضافة قماش جديد</DialogTitle>
-          </DialogHeader>
+        <DialogContent
+          dir="rtl"
+          className="sm:max-w-xl overflow-hidden rounded-[28px] border border-border/70 p-0"
+        >
+          <div className="border-b border-border/60 px-6 py-5">
+            <DialogHeader className="space-y-1 text-right">
+              <DialogTitle className="text-xl font-bold">
+                إضافة قماش جديد
+              </DialogTitle>
+              <div className="text-sm text-muted-foreground">
+                أضف خامة جديدة وحدد الوحدة والتكلفة وحد التنبيه
+              </div>
+            </DialogHeader>
+          </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2 md:col-span-2">
-              <div className="text-sm">اسم القماش</div>
+          <div className="space-y-5 px-6 py-6">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">اسم القماش</div>
               <Input
                 value={newMaterial.name}
                 onChange={(e) =>
                   setNewMaterial((prev) => ({ ...prev, name: e.target.value }))
                 }
                 placeholder="مثال: قماش ياباني أسود"
+                className="h-12 rounded-2xl border-border/70"
               />
             </div>
 
-            <div className="space-y-2">
-              <div className="text-sm">الوحدة</div>
-              <Select
-                value={newMaterial.unit}
-                onValueChange={(value) =>
-                  setNewMaterial((prev) => ({ ...prev, unit: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="m">متر</SelectItem>
-                  <SelectItem value="pcs">قطعة</SelectItem>
-                  <SelectItem value="roll">لفة</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">الوحدة</div>
+                <Select
+                  value={newMaterial.unit}
+                  onValueChange={(value) =>
+                    setNewMaterial((prev) => ({ ...prev, unit: value }))
+                  }
+                >
+                  <SelectTrigger className="h-12 rounded-2xl border-border/70">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="m">متر</SelectItem>
+                    <SelectItem value="pcs">قطعة</SelectItem>
+                    <SelectItem value="roll">لفة</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <div className="text-sm">تكلفة الوحدة</div>
-              <Input
-                inputMode="decimal"
-                value={String(newMaterial.unit_cost)}
-                onChange={(e) =>
-                  setNewMaterial((prev) => ({
-                    ...prev,
-                    unit_cost: toNumber(e.target.value),
-                  }))
-                }
-              />
-            </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium">تكلفة الوحدة</div>
+                <Input
+                  inputMode="decimal"
+                  value={String(newMaterial.unit_cost)}
+                  onChange={(e) =>
+                    setNewMaterial((prev) => ({
+                      ...prev,
+                      unit_cost: toNumber(e.target.value),
+                    }))
+                  }
+                  className="h-12 rounded-2xl border-border/70"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <div className="text-sm">حد التنبيه</div>
-              <Input
-                inputMode="decimal"
-                value={String(newMaterial.reorder_level)}
-                onChange={(e) =>
-                  setNewMaterial((prev) => ({
-                    ...prev,
-                    reorder_level: toNumber(e.target.value),
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl border p-3">
-            <div>
-              <div className="text-sm font-medium">السماح بالسالب</div>
-              <div className="text-xs text-muted-foreground">
-                تفعيل السحب حتى لو الرصيد صفر
+              <div className="space-y-2 md:col-span-2">
+                <div className="text-sm font-medium">حد التنبيه</div>
+                <Input
+                  inputMode="decimal"
+                  value={String(newMaterial.reorder_level)}
+                  onChange={(e) =>
+                    setNewMaterial((prev) => ({
+                      ...prev,
+                      reorder_level: toNumber(e.target.value),
+                    }))
+                  }
+                  className="h-12 rounded-2xl border-border/70"
+                />
               </div>
             </div>
 
-            <Switch
-              checked={!!newMaterial.allow_negative}
-              onCheckedChange={(v) =>
-                setNewMaterial((prev) => ({ ...prev, allow_negative: v }))
-              }
-            />
+            <div className="rounded-2xl border border-border/70 px-4 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1 text-right">
+                  <div className="text-sm font-semibold">السماح بالسالب</div>
+                  <div className="text-xs text-muted-foreground">
+                    تفعيل السحب حتى لو الرصيد صفر
+                  </div>
+                </div>
+
+                <div className="shrink-0">
+                  <Switch
+                    checked={!!newMaterial.allow_negative}
+                    onCheckedChange={(v) =>
+                      setNewMaterial((prev) => ({ ...prev, allow_negative: v }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-start">
-            <Button variant="outline" onClick={() => setAddOpen(false)}>
-              إلغاء
-            </Button>
-            <Button onClick={createMaterial} disabled={addSaving}>
-              {addSaving ? (
-                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-              ) : null}
-              حفظ
-            </Button>
-          </DialogFooter>
+          <div className="border-t border-border/60 px-6 py-4">
+            <DialogFooter className="flex-row-reverse gap-2 sm:justify-start">
+              <Button
+                variant="outline"
+                className="h-11 rounded-2xl px-5"
+                onClick={() => setAddOpen(false)}
+              >
+                إلغاء
+              </Button>
+
+              <Button
+                className="h-11 rounded-2xl px-5"
+                onClick={createMaterial}
+                disabled={addSaving}
+              >
+                {addSaving ? (
+                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                ) : null}
+                حفظ
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
-
+      {/* Receive Dialog */}
       <Dialog open={receiveOpen} onOpenChange={setReceiveOpen}>
-        <DialogContent dir="rtl" className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>إدخال قماش</DialogTitle>
-          </DialogHeader>
+        <DialogContent
+          dir="rtl"
+          className="sm:max-w-xl overflow-hidden rounded-[28px] border border-border/70 p-0"
+        >
+          <div className="border-b border-border/60 px-6 py-5">
+            <DialogHeader className="space-y-1 text-right">
+              <DialogTitle className="text-xl font-bold">
+                إدخال قماش
+              </DialogTitle>
+              <div className="text-sm text-muted-foreground">
+                تسجيل حركة توريد أو شراء جديد للمخزون
+              </div>
+            </DialogHeader>
+          </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2 md:col-span-2">
-              <div className="text-sm">القماش</div>
+          <div className="space-y-5 px-6 py-6">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">القماش</div>
               <Select
                 value={receiveForm.material_id}
                 onValueChange={(value) =>
                   setReceiveForm((prev) => ({ ...prev, material_id: value }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-12 rounded-2xl border-border/70">
                   <SelectValue placeholder="اختر القماش" />
                 </SelectTrigger>
                 <SelectContent>
@@ -934,73 +1035,91 @@ export default function InventoryClient() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <div className="text-sm">الكمية</div>
-              <Input
-                inputMode="decimal"
-                value={String(receiveForm.delta || "")}
-                onChange={(e) =>
-                  setReceiveForm((prev) => ({
-                    ...prev,
-                    delta: toNumber(e.target.value),
-                  }))
-                }
-                placeholder="0"
-              />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">الكمية</div>
+                <Input
+                  inputMode="decimal"
+                  value={String(receiveForm.delta || "")}
+                  onChange={(e) =>
+                    setReceiveForm((prev) => ({
+                      ...prev,
+                      delta: toNumber(e.target.value),
+                    }))
+                  }
+                  placeholder="0"
+                  className="h-12 rounded-2xl border-border/70"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">تكلفة الوحدة</div>
+                <Input
+                  inputMode="decimal"
+                  value={String(receiveForm.unit_cost || "")}
+                  onChange={(e) =>
+                    setReceiveForm((prev) => ({
+                      ...prev,
+                      unit_cost: toNumber(e.target.value),
+                    }))
+                  }
+                  placeholder="0"
+                  className="h-12 rounded-2xl border-border/70"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm">تكلفة الوحدة</div>
-              <Input
-                inputMode="decimal"
-                value={String(receiveForm.unit_cost || "")}
-                onChange={(e) =>
-                  setReceiveForm((prev) => ({
-                    ...prev,
-                    unit_cost: toNumber(e.target.value),
-                  }))
-                }
-                placeholder="0"
-              />
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <div className="text-sm">ملاحظة</div>
+              <div className="text-sm font-medium">ملاحظة</div>
               <Input
                 value={receiveForm.note}
                 onChange={(e) =>
                   setReceiveForm((prev) => ({ ...prev, note: e.target.value }))
                 }
                 placeholder="مثال: توريد جديد / شراء مباشر"
+                className="h-12 rounded-2xl border-border/70"
               />
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-start">
-            <Button variant="outline" onClick={() => setReceiveOpen(false)}>
-              إلغاء
-            </Button>
-            <Button onClick={submitReceive} disabled={receiveSaving}>
-              {receiveSaving ? (
-                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-              ) : null}
-              حفظ الحركة
-            </Button>
-          </DialogFooter>
+          <div className="border-t border-border/60 px-6 py-4">
+            <DialogFooter className="flex-row-reverse gap-2 sm:justify-start">
+              <Button
+                variant="outline"
+                className="h-11 rounded-2xl px-5"
+                onClick={() => setReceiveOpen(false)}
+              >
+                إلغاء
+              </Button>
+
+              <Button
+                className="h-11 rounded-2xl px-5"
+                onClick={submitReceive}
+                disabled={receiveSaving}
+              >
+                {receiveSaving ? (
+                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                ) : null}
+                حفظ الحركة
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
-
+      {/* Edit Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent dir="rtl" className="sm:max-w-lg">
+        <DialogContent dir="rtl" className="sm:max-w-lg rounded-3xl">
           <DialogHeader>
-            <DialogTitle>تعديل بيانات القماش</DialogTitle>
+            <DialogTitle className="text-right text-xl font-bold">
+              تعديل بيانات القماش
+            </DialogTitle>
           </DialogHeader>
 
           {editing ? (
             <>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <div className="text-sm">اسم القماش</div>
+                  <div className="text-sm font-medium">اسم القماش</div>
                   <Input
                     value={editing.name}
                     onChange={(e) =>
@@ -1008,11 +1127,12 @@ export default function InventoryClient() {
                         prev ? { ...prev, name: e.target.value } : prev,
                       )
                     }
+                    className="h-11 rounded-2xl"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-sm">الوحدة</div>
+                  <div className="text-sm font-medium">الوحدة</div>
                   <Select
                     value={editing.unit}
                     onValueChange={(value) =>
@@ -1021,7 +1141,7 @@ export default function InventoryClient() {
                       )
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11 rounded-2xl">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1033,7 +1153,7 @@ export default function InventoryClient() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-sm">تكلفة الوحدة</div>
+                  <div className="text-sm font-medium">تكلفة الوحدة</div>
                   <Input
                     inputMode="decimal"
                     value={String(editing.unit_cost ?? 0)}
@@ -1044,11 +1164,12 @@ export default function InventoryClient() {
                           : prev,
                       )
                     }
+                    className="h-11 rounded-2xl"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-sm">حد التنبيه</div>
+                  <div className="text-sm font-medium">حد التنبيه</div>
                   <Input
                     inputMode="decimal"
                     value={String(editing.reorder_level ?? 0)}
@@ -1059,11 +1180,12 @@ export default function InventoryClient() {
                           : prev,
                       )
                     }
+                    className="h-11 rounded-2xl"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between rounded-xl border p-3">
+              <div className="flex items-center justify-between rounded-2xl border border-border/70 p-4">
                 <div>
                   <div className="text-sm font-medium">السماح بالسالب</div>
                   <div className="text-xs text-muted-foreground">
@@ -1082,10 +1204,18 @@ export default function InventoryClient() {
               </div>
 
               <DialogFooter className="gap-2 sm:justify-start">
-                <Button variant="outline" onClick={() => setEditOpen(false)}>
+                <Button
+                  variant="outline"
+                  className="rounded-2xl"
+                  onClick={() => setEditOpen(false)}
+                >
                   إلغاء
                 </Button>
-                <Button onClick={saveEdit} disabled={editSaving}>
+                <Button
+                  className="rounded-2xl"
+                  onClick={saveEdit}
+                  disabled={editSaving}
+                >
                   {editSaving ? (
                     <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                   ) : null}
