@@ -112,6 +112,7 @@ type ResultState = {
 
 function timeAgoLabel(date: Date) {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
   if (seconds < 60) return "الآن";
   if (seconds < 3600) return `قبل ${Math.floor(seconds / 60)} دقيقة`;
   return `قبل ${Math.floor(seconds / 3600)} ساعة`;
@@ -175,11 +176,12 @@ function mapConfirmSuccessMessage(data: ScanApiResponse) {
 export default function ProductionScanPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scannerRegionId = "production-qr-reader";
-
+  const isMountedRef = useRef(true);
+  const isScanningRef = useRef(false);
   const lastDetectedCodeRef = useRef("");
   const lastDetectedAtRef = useRef(0);
-  const isMountedRef = useRef(true);
+
+  const scannerRegionId = "production-qr-reader";
 
   const [qrValue, setQrValue] = useState("");
   const [loading, setLoading] = useState(false);
@@ -214,7 +216,7 @@ export default function ProductionScanPage() {
       return result.message || "تم تحميل بيانات القطعة، راجعها ثم أكد المرحلة";
     }
     if (!manualMode && cameraReady) {
-      return "الكاميرا تعمل الآن. وجّه QR داخل الإطار ليتم جلب بيانات القطعة تلقائيًا";
+      return "وجّه QR داخل الإطار وسيتم جلب بيانات القطعة تلقائيًا";
     }
     if (!manualMode && cameraError) {
       return cameraError;
@@ -240,6 +242,8 @@ export default function ProductionScanPage() {
     } catch {}
 
     scannerRef.current = null;
+    isScanningRef.current = false;
+
     if (isMountedRef.current) {
       setCameraReady(false);
     }
@@ -252,19 +256,28 @@ export default function ProductionScanPage() {
       setCameraStarting(true);
       setCameraError("");
 
-      const scanner = new Html5Qrcode(scannerRegionId);
+      const scanner = new Html5Qrcode(scannerRegionId, {
+        verbose: false,
+      });
       scannerRef.current = scanner;
 
+      const isMobile =
+        typeof window !== "undefined" &&
+        /iPhone|iPad|iPod|Android/i.test(window.navigator.userAgent);
+
       await scanner.start(
-        { facingMode: "environment" },
+        { facingMode: { exact: "environment" } },
         {
-          fps: 10,
-          qrbox: { width: 220, height: 220 },
-          aspectRatio: 1.7778,
+          fps: isMobile ? 12 : 10,
+          qrbox: isMobile
+            ? { width: 220, height: 220 }
+            : { width: 240, height: 240 },
+          aspectRatio: isMobile ? 1 : 1.7778,
+          disableFlip: false,
         },
         async (decodedText) => {
           const value = String(decodedText || "").trim();
-          if (!value || loading || confirming) return;
+          if (!value || loading || confirming || isScanningRef.current) return;
 
           const now = Date.now();
           const isSameCode = lastDetectedCodeRef.current === value;
@@ -272,11 +285,16 @@ export default function ProductionScanPage() {
 
           if (isSameCode && isTooSoon) return;
 
+          isScanningRef.current = true;
           lastDetectedCodeRef.current = value;
           lastDetectedAtRef.current = now;
 
           setQrValue(value);
           await handlePreview(value);
+
+          window.setTimeout(() => {
+            isScanningRef.current = false;
+          }, 1200);
         },
         () => {},
       );
@@ -286,13 +304,65 @@ export default function ProductionScanPage() {
         setCameraError("");
       }
     } catch {
-      if (isMountedRef.current) {
-        setCameraReady(false);
-        setCameraError(
-          "تعذر تشغيل الكاميرا. اسمح بالوصول إلى الكاميرا أو استخدم الإدخال اليدوي",
+      try {
+        const scanner = new Html5Qrcode(scannerRegionId, {
+          verbose: false,
+        });
+        scannerRef.current = scanner;
+
+        const isMobile =
+          typeof window !== "undefined" &&
+          /iPhone|iPad|iPod|Android/i.test(window.navigator.userAgent);
+
+        await scanner.start(
+          { facingMode: "environment" },
+          {
+            fps: isMobile ? 12 : 10,
+            qrbox: isMobile
+              ? { width: 220, height: 220 }
+              : { width: 240, height: 240 },
+            aspectRatio: isMobile ? 1 : 1.7778,
+            disableFlip: false,
+          },
+          async (decodedText) => {
+            const value = String(decodedText || "").trim();
+            if (!value || loading || confirming || isScanningRef.current) {
+              return;
+            }
+
+            const now = Date.now();
+            const isSameCode = lastDetectedCodeRef.current === value;
+            const isTooSoon = now - lastDetectedAtRef.current < 2500;
+
+            if (isSameCode && isTooSoon) return;
+
+            isScanningRef.current = true;
+            lastDetectedCodeRef.current = value;
+            lastDetectedAtRef.current = now;
+
+            setQrValue(value);
+            await handlePreview(value);
+
+            window.setTimeout(() => {
+              isScanningRef.current = false;
+            }, 1200);
+          },
+          () => {},
         );
+
+        if (isMountedRef.current) {
+          setCameraReady(true);
+          setCameraError("");
+        }
+      } catch {
+        if (isMountedRef.current) {
+          setCameraReady(false);
+          setCameraError(
+            "تعذر تشغيل الكاميرا. اسمح بالوصول إلى الكاميرا أو استخدم الإدخال اليدوي",
+          );
+        }
+        await stopCamera();
       }
-      await stopCamera();
     } finally {
       if (isMountedRef.current) {
         setCameraStarting(false);
@@ -497,6 +567,45 @@ export default function ProductionScanPage() {
 
   return (
     <>
+      <style jsx global>{`
+        #production-qr-reader {
+          width: 100% !important;
+          height: 100% !important;
+          position: absolute !important;
+          inset: 0 !important;
+          overflow: hidden !important;
+          border: 0 !important;
+          background: transparent !important;
+        }
+
+        #production-qr-reader video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          border-radius: 24px !important;
+        }
+
+        #production-qr-reader canvas {
+          display: none !important;
+        }
+
+        #production-qr-reader__dashboard,
+        #production-qr-reader__scan_region img {
+          display: none !important;
+        }
+
+        #production-qr-reader__scan_region {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 100% !important;
+          display: flex !important;
+          align-items: stretch !important;
+          justify-content: stretch !important;
+          border: 0 !important;
+          padding: 0 !important;
+        }
+      `}</style>
+
       <div className="space-y-4">
         <section className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-slate-100">
           <div className="mb-4 flex items-center justify-between">
@@ -521,7 +630,7 @@ export default function ProductionScanPage() {
               <span>تنفيذ المرحلة الحالية</span>
             </div>
 
-            <div className="relative h-[220px] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)]">
+            <div className="relative h-[280px] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)] sm:h-[320px]">
               {!manualMode && (
                 <div
                   id={scannerRegionId}
@@ -532,7 +641,7 @@ export default function ProductionScanPage() {
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18),rgba(15,23,42,0.3))]" />
 
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="relative h-40 w-40 rounded-[28px] border-2 border-dashed border-indigo-300/70">
+                <div className="relative h-[170px] w-[170px] rounded-[28px] border-2 border-dashed border-indigo-300/70 sm:h-[190px] sm:w-[190px]">
                   <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 bg-[linear-gradient(90deg,transparent,#38bdf8,#8b5cf6,transparent)] shadow-[0_0_20px_rgba(56,189,248,0.8)]" />
                   <div className="absolute -left-1 -top-1 h-8 w-8 rounded-tl-[22px] border-l-4 border-t-4 border-cyan-300" />
                   <div className="absolute -right-1 -top-1 h-8 w-8 rounded-tr-[22px] border-r-4 border-t-4 border-cyan-300" />
@@ -812,6 +921,7 @@ export default function ProductionScanPage() {
                       {previewData.product?.size || "-"}
                     </div>
                   </div>
+
                   <div className="rounded-2xl bg-white p-3 sm:col-span-2">
                     <div className="mb-1 text-xs text-slate-500">
                       خيارات المنتج
@@ -820,6 +930,7 @@ export default function ProductionScanPage() {
                       {previewData.product?.optionsText || "-"}
                     </div>
                   </div>
+
                   <div className="rounded-2xl bg-white p-3">
                     <div className="mb-1 flex items-center gap-2 text-xs text-slate-500">
                       <Shirt className="h-4 w-4" />
