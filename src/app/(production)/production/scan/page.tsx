@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 import {
   AlertCircle,
   Camera,
@@ -18,19 +19,6 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-
-declare global {
-  interface Window {
-    BarcodeDetector?: {
-      new (options?: { formats?: string[] }): {
-        detect: (
-          source: ImageBitmapSource,
-        ) => Promise<Array<{ rawValue?: string }>>;
-      };
-      getSupportedFormats?: () => Promise<string[]>;
-    };
-  }
-}
 
 type ScanApiResponse = {
   ok?: boolean;
@@ -124,7 +112,6 @@ type ResultState = {
 
 function timeAgoLabel(date: Date) {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-
   if (seconds < 60) return "الآن";
   if (seconds < 3600) return `قبل ${Math.floor(seconds / 60)} دقيقة`;
   return `قبل ${Math.floor(seconds / 3600)} ساعة`;
@@ -187,17 +174,12 @@ function mapConfirmSuccessMessage(data: ScanApiResponse) {
 
 export default function ProductionScanPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<{
-    detect: (
-      source: ImageBitmapSource,
-    ) => Promise<Array<{ rawValue?: string }>>;
-  } | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const isStartingCameraRef = useRef(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerRegionId = "production-qr-reader";
+
   const lastDetectedCodeRef = useRef("");
   const lastDetectedAtRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   const [qrValue, setQrValue] = useState("");
   const [loading, setLoading] = useState(false);
@@ -208,7 +190,6 @@ export default function ProductionScanPage() {
   const [previewData, setPreviewData] = useState<ScanApiResponse | null>(null);
   const [imageOpen, setImageOpen] = useState(false);
 
-  const [cameraSupported, setCameraSupported] = useState(true);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [cameraStarting, setCameraStarting] = useState(false);
@@ -241,124 +222,81 @@ export default function ProductionScanPage() {
     return "امسح QR أو أدخل الكود يدويًا لمعاينة القطعة";
   }, [loading, confirming, result, manualMode, cameraReady, cameraError]);
 
-  function stopCamera() {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    setCameraReady(false);
-  }
-
-  async function scanLoop() {
-    const video = videoRef.current;
-    const detector = detectorRef.current;
-
-    if (!video || !detector || manualMode || loading || confirming) {
-      rafRef.current = requestAnimationFrame(scanLoop);
-      return;
-    }
+  async function stopCamera() {
+    try {
+      if (scannerRef.current?.isScanning) {
+        await scannerRef.current.stop();
+      }
+    } catch {}
 
     try {
-      if (video.readyState >= 2) {
-        const barcodes = await detector.detect(video);
+      await scannerRef.current?.clear();
+    } catch {}
 
-        if (barcodes?.length) {
-          const rawValue = String(barcodes[0]?.rawValue || "").trim();
-
-          if (rawValue) {
-            const now = Date.now();
-            const isSameCode = lastDetectedCodeRef.current === rawValue;
-            const isTooSoon = now - lastDetectedAtRef.current < 2500;
-
-            if (!isSameCode || !isTooSoon) {
-              lastDetectedCodeRef.current = rawValue;
-              lastDetectedAtRef.current = now;
-              setQrValue(rawValue);
-              await handlePreview(rawValue);
-            }
-          }
-        }
-      }
-    } catch {
-      // تجاهل أخطاء القراءة المتقطعة من الكاميرا
+    scannerRef.current = null;
+    if (isMountedRef.current) {
+      setCameraReady(false);
     }
-
-    rafRef.current = requestAnimationFrame(scanLoop);
   }
 
   async function startCamera() {
-    if (typeof window === "undefined") return;
-    if (isStartingCameraRef.current) return;
-    if (manualMode) return;
-
-    if (!navigator.mediaDevices?.getUserMedia || !window.BarcodeDetector) {
-      setCameraSupported(false);
-      setCameraError(
-        "المتصفح الحالي لا يدعم قراءة QR بالكاميرا، استخدم الإدخال اليدوي",
-      );
-      return;
-    }
+    if (manualMode || scannerRef.current) return;
 
     try {
-      isStartingCameraRef.current = true;
       setCameraStarting(true);
       setCameraError("");
 
-      const supportedFormats = window.BarcodeDetector.getSupportedFormats
-        ? await window.BarcodeDetector.getSupportedFormats().catch(() => [])
-        : [];
+      const scanner = new Html5Qrcode(scannerRegionId);
+      scannerRef.current = scanner;
 
-      const preferredFormats = ["qr_code"];
-      const formats =
-        supportedFormats.length > 0
-          ? preferredFormats.filter((f) => supportedFormats.includes(f))
-          : preferredFormats;
-
-      detectorRef.current = new window.BarcodeDetector({
-        formats: formats.length ? formats : ["qr_code"],
-      });
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 220, height: 220 },
+          aspectRatio: 1.7778,
         },
-        audio: false,
-      });
+        async (decodedText) => {
+          const value = String(decodedText || "").trim();
+          if (!value || loading || confirming) return;
 
-      streamRef.current = stream;
+          const now = Date.now();
+          const isSameCode = lastDetectedCodeRef.current === value;
+          const isTooSoon = now - lastDetectedAtRef.current < 2500;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute("playsinline", "true");
-        await videoRef.current.play().catch(() => undefined);
-      }
+          if (isSameCode && isTooSoon) return;
 
-      setCameraReady(true);
+          lastDetectedCodeRef.current = value;
+          lastDetectedAtRef.current = now;
 
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-      rafRef.current = requestAnimationFrame(scanLoop);
-    } catch {
-      setCameraReady(false);
-      setCameraError(
-        "تعذر تشغيل الكاميرا. اسمح بالوصول إلى الكاميرا أو استخدم الإدخال اليدوي",
+          setQrValue(value);
+          await handlePreview(value);
+        },
+        () => {},
       );
+
+      if (isMountedRef.current) {
+        setCameraReady(true);
+        setCameraError("");
+      }
+    } catch {
+      if (isMountedRef.current) {
+        setCameraReady(false);
+        setCameraError(
+          "تعذر تشغيل الكاميرا. اسمح بالوصول إلى الكاميرا أو استخدم الإدخال اليدوي",
+        );
+      }
+      await stopCamera();
     } finally {
-      setCameraStarting(false);
-      isStartingCameraRef.current = false;
+      if (isMountedRef.current) {
+        setCameraStarting(false);
+      }
     }
   }
 
@@ -584,21 +522,16 @@ export default function ProductionScanPage() {
             </div>
 
             <div className="relative h-[220px] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)]">
-              {!manualMode && cameraSupported ? (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="absolute inset-0 h-full w-full object-cover opacity-90"
-                  />
+              {!manualMode && (
+                <div
+                  id={scannerRegionId}
+                  className="absolute inset-0 h-full w-full overflow-hidden"
+                />
+              )}
 
-                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18),rgba(15,23,42,0.3))]" />
-                </>
-              ) : null}
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18),rgba(15,23,42,0.3))]" />
 
-              <div className="absolute inset-0 flex items-center justify-center">
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <div className="relative h-40 w-40 rounded-[28px] border-2 border-dashed border-indigo-300/70">
                   <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 bg-[linear-gradient(90deg,transparent,#38bdf8,#8b5cf6,transparent)] shadow-[0_0_20px_rgba(56,189,248,0.8)]" />
                   <div className="absolute -left-1 -top-1 h-8 w-8 rounded-tl-[22px] border-l-4 border-t-4 border-cyan-300" />
