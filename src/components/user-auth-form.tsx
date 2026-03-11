@@ -37,6 +37,44 @@ function formatCountdown(totalSeconds: number) {
   )}`;
 }
 
+function mapAuthError(message?: string) {
+  const text = String(message || "").toLowerCase();
+
+  if (
+    text.includes("token has expired") ||
+    text.includes("otp expired") ||
+    text.includes("expired")
+  ) {
+    return "انتهت صلاحية رمز التحقق، أعد إرسال رمز جديد";
+  }
+
+  if (
+    text.includes("invalid") ||
+    text.includes("token") ||
+    text.includes("otp")
+  ) {
+    return "رمز التحقق غير صحيح أو منتهي الصلاحية";
+  }
+
+  if (text.includes("email not confirmed")) {
+    return "تعذر تأكيد البريد الإلكتروني";
+  }
+
+  if (text.includes("email rate limit exceeded")) {
+    return "تم تجاوز عدد المحاولات، انتظر قليلًا ثم أعد المحاولة";
+  }
+
+  if (text.includes("too many requests")) {
+    return "عدد المحاولات كبير، انتظر قليلًا ثم أعد المحاولة";
+  }
+
+  if (text.includes("network")) {
+    return "تعذر الاتصال بالشبكة، تحقق من الإنترنت ثم أعد المحاولة";
+  }
+
+  return "حدث خطأ أثناء التحقق، حاول مرة أخرى";
+}
+
 export function UserAuthForm() {
   const router = useRouter();
   const supabase = useMemo(() => supabaseBrowser(), []);
@@ -97,6 +135,8 @@ export function UserAuthForm() {
   function handleOtpChange(index: number, rawValue: string) {
     const clean = onlyDigits(rawValue);
 
+    setError("");
+
     if (!clean) {
       setOtpDigits((prev) => {
         const next = [...prev];
@@ -135,6 +175,8 @@ export function UserAuthForm() {
     e: React.KeyboardEvent<HTMLInputElement>,
   ) {
     if (e.key === "Backspace") {
+      setError("");
+
       if (otpDigits[index]) {
         setOtpDigits((prev) => {
           const next = [...prev];
@@ -171,6 +213,8 @@ export function UserAuthForm() {
 
   function handleOtpPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     e.preventDefault();
+
+    setError("");
 
     const pasted = onlyDigits(e.clipboardData.getData("text")).slice(
       0,
@@ -218,7 +262,7 @@ export function UserAuthForm() {
       setDialogOpen(true);
       setSuccess("تم إرسال رمز التحقق إلى بريدك الإلكتروني");
     } catch (err: any) {
-      setError(err?.message || "تعذر إرسال رمز التحقق");
+      setError(mapAuthError(err?.message || "تعذر إرسال رمز التحقق"));
       setSuccess("");
     } finally {
       setSending(false);
@@ -236,8 +280,13 @@ export function UserAuthForm() {
       return;
     }
 
+    if (timeLeft <= 0) {
+      setError("انتهت صلاحية رمز التحقق، أعد إرسال رمز جديد");
+      return;
+    }
+
     if (cleanOtp.length < OTP_LENGTH) {
-      setError("أدخل رمز التحقق الصحيح");
+      setError("أدخل رمز التحقق كاملًا");
       return;
     }
 
@@ -256,10 +305,11 @@ export function UserAuthForm() {
 
       setDialogOpen(false);
       resetOtp();
+      setSuccess("");
       router.refresh();
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err?.message || "رمز التحقق غير صحيح");
+      setError(mapAuthError(err?.message));
     } finally {
       setVerifying(false);
     }
@@ -298,7 +348,7 @@ export function UserAuthForm() {
         inputRefs.current[0]?.focus();
       }, 60);
     } catch (err: any) {
-      setError(err?.message || "تعذرت إعادة الإرسال");
+      setError(mapAuthError(err?.message || "تعذرت إعادة الإرسال"));
     } finally {
       setSending(false);
     }
@@ -318,7 +368,11 @@ export function UserAuthForm() {
               autoComplete="email"
               placeholder="البريد الإلكتروني"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError("");
+                setSuccess("");
+              }}
               className="pr-10"
               disabled={sending || verifying}
             />
@@ -356,6 +410,8 @@ export function UserAuthForm() {
           if (!open) {
             resetOtp();
             setTimeLeft(OTP_EXPIRY_SECONDS);
+            setError("");
+            setSuccess("");
           }
         }}
       >

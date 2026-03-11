@@ -55,7 +55,6 @@ const managementItems = [
   { title: "المالية", href: "/dashboard/finance", icon: Wallet },
   { title: "التنبيهات", href: "/dashboard/notifications", icon: Bell },
   { title: "الأداء", href: "/dashboard/performance", icon: BarChart3 },
-  { title: "الإعدادات", href: "/dashboard/settings", icon: Settings },
 ];
 
 function SidebarSection({

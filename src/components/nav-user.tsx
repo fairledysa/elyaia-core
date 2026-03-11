@@ -63,13 +63,8 @@ export function NavUser({ email, name }: Props) {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent align="start" className="w-56" sideOffset={8}>
-            <DropdownMenuItem
-              onClick={() => router.push("/dashboard/settings")}
-            >
-              الإعدادات
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/dashboard/billing")}>
-              الفواتير
+            <DropdownMenuItem onClick={() => router.push("/dashboard/guide")}>
+              دليل استخدام
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut}>تسجيل الخروج</DropdownMenuItem>
