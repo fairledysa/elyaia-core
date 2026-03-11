@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import {
   AlertCircle,
   Camera,
@@ -112,7 +112,6 @@ type ResultState = {
 
 function timeAgoLabel(date: Date) {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-
   if (seconds < 60) return "الآن";
   if (seconds < 3600) return `قبل ${Math.floor(seconds / 60)} دقيقة`;
   return `قبل ${Math.floor(seconds / 3600)} ساعة`;
@@ -258,6 +257,7 @@ export default function ProductionScanPage() {
 
       const scanner = new Html5Qrcode(scannerRegionId, {
         verbose: false,
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
       });
       scannerRef.current = scanner;
 
@@ -265,104 +265,68 @@ export default function ProductionScanPage() {
         typeof window !== "undefined" &&
         /iPhone|iPad|iPod|Android/i.test(window.navigator.userAgent);
 
-      await scanner.start(
-        { facingMode: { exact: "environment" } },
-        {
-          fps: isMobile ? 12 : 10,
-          qrbox: isMobile
-            ? { width: 220, height: 220 }
-            : { width: 240, height: 240 },
-          aspectRatio: isMobile ? 1 : 1.7778,
-          disableFlip: false,
+      const onScanSuccess = async (decodedText: string) => {
+        const value = String(decodedText || "").trim();
+        if (!value || loading || confirming || isScanningRef.current) return;
+
+        const now = Date.now();
+        const isSameCode = lastDetectedCodeRef.current === value;
+        const isTooSoon = now - lastDetectedAtRef.current < 2500;
+
+        if (isSameCode && isTooSoon) return;
+
+        isScanningRef.current = true;
+        lastDetectedCodeRef.current = value;
+        lastDetectedAtRef.current = now;
+
+        setQrValue(value);
+        await handlePreview(value);
+
+        window.setTimeout(() => {
+          isScanningRef.current = false;
+        }, 1200);
+      };
+
+      const config = {
+        fps: isMobile ? 18 : 12,
+        qrbox: isMobile
+          ? { width: 260, height: 260 }
+          : { width: 280, height: 280 },
+        aspectRatio: 1,
+        disableFlip: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
         },
-        async (decodedText) => {
-          const value = String(decodedText || "").trim();
-          if (!value || loading || confirming || isScanningRef.current) return;
+      };
 
-          const now = Date.now();
-          const isSameCode = lastDetectedCodeRef.current === value;
-          const isTooSoon = now - lastDetectedAtRef.current < 2500;
-
-          if (isSameCode && isTooSoon) return;
-
-          isScanningRef.current = true;
-          lastDetectedCodeRef.current = value;
-          lastDetectedAtRef.current = now;
-
-          setQrValue(value);
-          await handlePreview(value);
-
-          window.setTimeout(() => {
-            isScanningRef.current = false;
-          }, 1200);
-        },
-        () => {},
-      );
+      try {
+        await scanner.start(
+          { facingMode: { exact: "environment" } },
+          config,
+          onScanSuccess,
+          () => {},
+        );
+      } catch {
+        await scanner.start(
+          { facingMode: "environment" },
+          config,
+          onScanSuccess,
+          () => {},
+        );
+      }
 
       if (isMountedRef.current) {
         setCameraReady(true);
         setCameraError("");
       }
     } catch {
-      try {
-        const scanner = new Html5Qrcode(scannerRegionId, {
-          verbose: false,
-        });
-        scannerRef.current = scanner;
-
-        const isMobile =
-          typeof window !== "undefined" &&
-          /iPhone|iPad|iPod|Android/i.test(window.navigator.userAgent);
-
-        await scanner.start(
-          { facingMode: "environment" },
-          {
-            fps: isMobile ? 12 : 10,
-            qrbox: isMobile
-              ? { width: 220, height: 220 }
-              : { width: 240, height: 240 },
-            aspectRatio: isMobile ? 1 : 1.7778,
-            disableFlip: false,
-          },
-          async (decodedText) => {
-            const value = String(decodedText || "").trim();
-            if (!value || loading || confirming || isScanningRef.current) {
-              return;
-            }
-
-            const now = Date.now();
-            const isSameCode = lastDetectedCodeRef.current === value;
-            const isTooSoon = now - lastDetectedAtRef.current < 2500;
-
-            if (isSameCode && isTooSoon) return;
-
-            isScanningRef.current = true;
-            lastDetectedCodeRef.current = value;
-            lastDetectedAtRef.current = now;
-
-            setQrValue(value);
-            await handlePreview(value);
-
-            window.setTimeout(() => {
-              isScanningRef.current = false;
-            }, 1200);
-          },
-          () => {},
+      if (isMountedRef.current) {
+        setCameraReady(false);
+        setCameraError(
+          "تعذر تشغيل الكاميرا أو قراءة QR. جرّب تقريب الكود أو استخدم الإدخال اليدوي",
         );
-
-        if (isMountedRef.current) {
-          setCameraReady(true);
-          setCameraError("");
-        }
-      } catch {
-        if (isMountedRef.current) {
-          setCameraReady(false);
-          setCameraError(
-            "تعذر تشغيل الكاميرا. اسمح بالوصول إلى الكاميرا أو استخدم الإدخال اليدوي",
-          );
-        }
-        await stopCamera();
       }
+      await stopCamera();
     } finally {
       if (isMountedRef.current) {
         setCameraStarting(false);
@@ -583,6 +547,8 @@ export default function ProductionScanPage() {
           height: 100% !important;
           object-fit: cover !important;
           border-radius: 24px !important;
+          transform: none !important;
+          filter: contrast(1.08) saturate(1.05) brightness(1.02) !important;
         }
 
         #production-qr-reader canvas {
@@ -630,7 +596,7 @@ export default function ProductionScanPage() {
               <span>تنفيذ المرحلة الحالية</span>
             </div>
 
-            <div className="relative h-[280px] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)] sm:h-[320px]">
+            <div className="relative h-[320px] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)] sm:h-[380px]">
               {!manualMode && (
                 <div
                   id={scannerRegionId}
@@ -641,7 +607,7 @@ export default function ProductionScanPage() {
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18),rgba(15,23,42,0.3))]" />
 
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="relative h-[170px] w-[170px] rounded-[28px] border-2 border-dashed border-indigo-300/70 sm:h-[190px] sm:w-[190px]">
+                <div className="relative h-[220px] w-[220px] rounded-[28px] border-2 border-dashed border-indigo-300/70 sm:h-[240px] sm:w-[240px]">
                   <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 bg-[linear-gradient(90deg,transparent,#38bdf8,#8b5cf6,transparent)] shadow-[0_0_20px_rgba(56,189,248,0.8)]" />
                   <div className="absolute -left-1 -top-1 h-8 w-8 rounded-tl-[22px] border-l-4 border-t-4 border-cyan-300" />
                   <div className="absolute -right-1 -top-1 h-8 w-8 rounded-tr-[22px] border-r-4 border-t-4 border-cyan-300" />
