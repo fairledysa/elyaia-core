@@ -1,7 +1,7 @@
 // FILE: src/app/(production)/production/scan/page.tsx
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Camera,
@@ -18,6 +18,19 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+
+declare global {
+  interface Window {
+    BarcodeDetector?: {
+      new (options?: { formats?: string[] }): {
+        detect: (
+          source: ImageBitmapSource,
+        ) => Promise<Array<{ rawValue?: string }>>;
+      };
+      getSupportedFormats?: () => Promise<string[]>;
+    };
+  }
+}
 
 type ScanApiResponse = {
   ok?: boolean;
@@ -174,15 +187,31 @@ function mapConfirmSuccessMessage(data: ScanApiResponse) {
 
 export default function ProductionScanPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const detectorRef = useRef<{
+    detect: (
+      source: ImageBitmapSource,
+    ) => Promise<Array<{ rawValue?: string }>>;
+  } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const isStartingCameraRef = useRef(false);
+  const lastDetectedCodeRef = useRef("");
+  const lastDetectedAtRef = useRef(0);
 
   const [qrValue, setQrValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [manualMode, setManualMode] = useState(true);
+  const [manualMode, setManualMode] = useState(false);
   const [lastScanAt, setLastScanAt] = useState<Date | null>(null);
   const [recentScans, setRecentScans] = useState<RecentScanItem[]>([]);
   const [previewData, setPreviewData] = useState<ScanApiResponse | null>(null);
   const [imageOpen, setImageOpen] = useState(false);
+
+  const [cameraSupported, setCameraSupported] = useState(true);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [cameraStarting, setCameraStarting] = useState(false);
 
   const [result, setResult] = useState<ResultState>({
     kind: "idle",
@@ -200,10 +229,151 @@ export default function ProductionScanPage() {
     if (loading) return "جاري جلب بيانات القطعة...";
     if (result.kind === "success") return result.message || "تم التنفيذ بنجاح";
     if (result.kind === "error") return result.message || "تعذر تنفيذ العملية";
-    if (result.kind === "preview")
+    if (result.kind === "preview") {
       return result.message || "تم تحميل بيانات القطعة، راجعها ثم أكد المرحلة";
+    }
+    if (!manualMode && cameraReady) {
+      return "الكاميرا تعمل الآن. وجّه QR داخل الإطار ليتم جلب بيانات القطعة تلقائيًا";
+    }
+    if (!manualMode && cameraError) {
+      return cameraError;
+    }
     return "امسح QR أو أدخل الكود يدويًا لمعاينة القطعة";
-  }, [loading, confirming, result]);
+  }, [loading, confirming, result, manualMode, cameraReady, cameraError]);
+
+  function stopCamera() {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraReady(false);
+  }
+
+  async function scanLoop() {
+    const video = videoRef.current;
+    const detector = detectorRef.current;
+
+    if (!video || !detector || manualMode || loading || confirming) {
+      rafRef.current = requestAnimationFrame(scanLoop);
+      return;
+    }
+
+    try {
+      if (video.readyState >= 2) {
+        const barcodes = await detector.detect(video);
+
+        if (barcodes?.length) {
+          const rawValue = String(barcodes[0]?.rawValue || "").trim();
+
+          if (rawValue) {
+            const now = Date.now();
+            const isSameCode = lastDetectedCodeRef.current === rawValue;
+            const isTooSoon = now - lastDetectedAtRef.current < 2500;
+
+            if (!isSameCode || !isTooSoon) {
+              lastDetectedCodeRef.current = rawValue;
+              lastDetectedAtRef.current = now;
+              setQrValue(rawValue);
+              await handlePreview(rawValue);
+            }
+          }
+        }
+      }
+    } catch {
+      // تجاهل أخطاء القراءة المتقطعة من الكاميرا
+    }
+
+    rafRef.current = requestAnimationFrame(scanLoop);
+  }
+
+  async function startCamera() {
+    if (typeof window === "undefined") return;
+    if (isStartingCameraRef.current) return;
+    if (manualMode) return;
+
+    if (!navigator.mediaDevices?.getUserMedia || !window.BarcodeDetector) {
+      setCameraSupported(false);
+      setCameraError(
+        "المتصفح الحالي لا يدعم قراءة QR بالكاميرا، استخدم الإدخال اليدوي",
+      );
+      return;
+    }
+
+    try {
+      isStartingCameraRef.current = true;
+      setCameraStarting(true);
+      setCameraError("");
+
+      const supportedFormats = window.BarcodeDetector.getSupportedFormats
+        ? await window.BarcodeDetector.getSupportedFormats().catch(() => [])
+        : [];
+
+      const preferredFormats = ["qr_code"];
+      const formats =
+        supportedFormats.length > 0
+          ? preferredFormats.filter((f) => supportedFormats.includes(f))
+          : preferredFormats;
+
+      detectorRef.current = new window.BarcodeDetector({
+        formats: formats.length ? formats : ["qr_code"],
+      });
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true");
+        await videoRef.current.play().catch(() => undefined);
+      }
+
+      setCameraReady(true);
+
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      rafRef.current = requestAnimationFrame(scanLoop);
+    } catch {
+      setCameraReady(false);
+      setCameraError(
+        "تعذر تشغيل الكاميرا. اسمح بالوصول إلى الكاميرا أو استخدم الإدخال اليدوي",
+      );
+    } finally {
+      setCameraStarting(false);
+      isStartingCameraRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!manualMode) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+
+    return () => {
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualMode]);
 
   async function requestScan(
     action: "preview" | "confirm",
@@ -397,7 +567,8 @@ export default function ProductionScanPage() {
                 ماسح الباركود
               </div>
               <div className="text-xs text-slate-500">
-                أدخل الباركود أولًا لعرض البيانات، ثم أكد المرحلة بعد المراجعة
+                افتح الكاميرا تلقائيًا، وعند مسح QR سيتم جلب بيانات القطعة
+                مباشرة
               </div>
             </div>
 
@@ -412,7 +583,21 @@ export default function ProductionScanPage() {
               <span>تنفيذ المرحلة الحالية</span>
             </div>
 
-            <div className="relative h-[220px] rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)]">
+            <div className="relative h-[220px] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)]">
+              {!manualMode && cameraSupported ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="absolute inset-0 h-full w-full object-cover opacity-90"
+                  />
+
+                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18),rgba(15,23,42,0.3))]" />
+                </>
+              ) : null}
+
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="relative h-40 w-40 rounded-[28px] border-2 border-dashed border-indigo-300/70">
                   <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 bg-[linear-gradient(90deg,transparent,#38bdf8,#8b5cf6,transparent)] shadow-[0_0_20px_rgba(56,189,248,0.8)]" />
@@ -427,14 +612,19 @@ export default function ProductionScanPage() {
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-sm text-white/80 backdrop-blur">
                   {manualMode
                     ? "الوضع الحالي: إدخال يدوي للباركود"
-                    : "الكاميرا ستُربط لاحقًا مع المسح المباشر"}
+                    : cameraStarting
+                      ? "جاري تشغيل الكاميرا..."
+                      : cameraReady
+                        ? "وجّه QR داخل الإطار وسيتم جلب بيانات القطعة تلقائيًا"
+                        : cameraError || "جاري تهيئة الكاميرا"}
                 </div>
               </div>
 
               <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
                 <button
                   type="button"
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 backdrop-blur"
+                  disabled
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 opacity-60 backdrop-blur"
                 >
                   <Flashlight className="h-5 w-5" />
                 </button>
@@ -443,6 +633,7 @@ export default function ProductionScanPage() {
                   type="button"
                   onClick={() => {
                     setManualMode((prev) => !prev);
+                    setCameraError("");
                     setTimeout(() => {
                       inputRef.current?.focus();
                     }, 50);
@@ -761,9 +952,7 @@ export default function ProductionScanPage() {
                       نوع العامل
                     </div>
                     <div className="font-bold text-slate-900">
-                      {previewData.employee?.showPayout
-                        ? "بالقطعة"
-                        : "راتب شهري"}
+                      {showPayout ? "بالقطعة" : "راتب شهري"}
                     </div>
                   </div>
 
@@ -772,8 +961,7 @@ export default function ProductionScanPage() {
                       سعر المرحلة الحالية
                     </div>
                     <div className="font-bold text-slate-900">
-                      {previewData.employee?.showPayout &&
-                      previewData.stage?.payoutAmount != null
+                      {showPayout && previewData.stage?.payoutAmount != null
                         ? `${formatNumber(previewData.stage.payoutAmount)} ريال`
                         : "—"}
                     </div>
@@ -847,6 +1035,8 @@ export default function ProductionScanPage() {
                     qrCode: "-",
                   });
                   setQrValue("");
+                  lastDetectedCodeRef.current = "";
+                  lastDetectedAtRef.current = 0;
                   setTimeout(() => inputRef.current?.focus(), 50);
                 }}
                 className="h-16 w-full rounded-2xl border border-slate-200 px-6 text-base font-black text-slate-700 sm:h-[72px] sm:min-w-[220px] sm:text-lg"
