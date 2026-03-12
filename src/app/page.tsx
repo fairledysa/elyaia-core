@@ -1,7 +1,7 @@
 // FILE: src/app/page.tsx
 
 import Link from "next/link";
- 
+  
 function SectionTitle({
   badge,
   title,
