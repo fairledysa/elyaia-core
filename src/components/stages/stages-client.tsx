@@ -210,10 +210,10 @@ export default function StagesClient() {
 
   async function move(id: string, dir: "up" | "down") {
     try {
-      const r = await fetch(`/api/stages/${id}/move`, {
+      const r = await fetch("/api/stages/move", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dir }),
+        body: JSON.stringify({ id, dir }),
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "Move failed");

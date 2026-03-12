@@ -1,6 +1,7 @@
 // FILE: src/components/products/products-client.tsx
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
@@ -12,6 +13,7 @@ import {
   Search,
   Workflow,
   Boxes,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,13 +49,28 @@ type StageRow = {
   archived: boolean;
 };
 
+type ProductStageRelation =
+  | {
+      name?: string | null;
+      require_previous_complete?: boolean;
+      inventory_deduct_enabled?: boolean;
+      archived?: boolean;
+    }
+  | Array<{
+      name?: string | null;
+      require_previous_complete?: boolean;
+      inventory_deduct_enabled?: boolean;
+      archived?: boolean;
+    }>
+  | null;
+
 type ProductStageRow = {
   id: string;
   stage_id: string;
   enabled: boolean;
   payout_amount: number | null;
   sort_order: number;
-  stages?: { name: string } | null;
+  stages?: ProductStageRelation;
 };
 
 type MaterialRow = {
@@ -69,6 +86,15 @@ type ProductMaterialRow = {
   material_id: string;
   qty_per_piece: number;
   materials?: { name: string } | null;
+};
+
+type SyncProductsResponse = {
+  ok: boolean;
+  error?: string;
+  trace?: string;
+  tenantId?: string;
+  installationId?: string;
+  productsUpserted?: number;
 };
 
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
@@ -87,29 +113,35 @@ function SectionShell({
   icon: Icon,
   title,
   subtitle,
+  action,
   children,
 }: {
   icon: React.ElementType;
   title: string;
   subtitle?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <Card className="overflow-hidden rounded-3xl border-border/70 shadow-sm">
       <CardHeader className="border-b border-border/60 pb-4">
-        <div className="flex items-center gap-3 text-right">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
-            <Icon className="h-5 w-5" />
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 text-right">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-muted/50 text-foreground">
+              <Icon className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0">
+              <CardTitle className="text-base font-bold md:text-lg">
+                {title}
+              </CardTitle>
+              {subtitle ? (
+                <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+              ) : null}
+            </div>
           </div>
 
-          <div className="min-w-0">
-            <CardTitle className="text-base font-bold md:text-lg">
-              {title}
-            </CardTitle>
-            {subtitle ? (
-              <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
-            ) : null}
-          </div>
+          {action ? <div className="shrink-0">{action}</div> : null}
         </div>
       </CardHeader>
 
@@ -141,31 +173,69 @@ export default function ProductsClient() {
   const [addMaterialId, setAddMaterialId] = useState("");
   const [addMaterialQty, setAddMaterialQty] = useState<string>("");
 
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  async function loadBaseData() {
+    setLoading(true);
+    try {
+      const p = await j<{ ok: boolean; items: SallaProductRow[] }>(
+        "/api/products",
+      );
+      setProducts(p.items || []);
+
+      const s = await j<{ ok: boolean; items: StageRow[] }>("/api/stages");
+      setStages(
+        (s.items || [])
+          .filter((x) => !x.archived)
+          .sort((a, b) => a.sort_order - b.sort_order),
+      );
+
+      const m = await j<{ ok: boolean; items: MaterialRow[] }>(
+        "/api/materials",
+      );
+      setMaterials(m.items || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function reloadProductsOnly(nextActiveId?: string | null) {
+    const p = await j<{ ok: boolean; items: SallaProductRow[] }>(
+      "/api/products",
+    );
+    const nextProducts = p.items || [];
+    setProducts(nextProducts);
+
+    if (nextActiveId) {
+      const found = nextProducts.find(
+        (item) => item.salla_product_id === nextActiveId,
+      );
+      if (found) setActive(found);
+    }
+  }
+
+  async function reloadProductStages(productId: string) {
+    const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
+      `/api/products/${encodeURIComponent(productId)}/stages`,
+    );
+    setProductStages(
+      (ps.items || []).sort(
+        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      ),
+    );
+  }
+
+  async function reloadProductMaterials(productId: string) {
+    const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
+      `/api/products/${encodeURIComponent(productId)}/materials`,
+    );
+    setProductMaterials(pm.items || []);
+  }
+
   useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-
-        const p = await j<{ ok: boolean; items: SallaProductRow[] }>(
-          "/api/products",
-        );
-        setProducts(p.items || []);
-
-        const s = await j<{ ok: boolean; items: StageRow[] }>("/api/stages");
-        setStages(
-          (s.items || [])
-            .filter((x) => !x.archived)
-            .sort((a, b) => a.sort_order - b.sort_order),
-        );
-
-        const m = await j<{ ok: boolean; items: MaterialRow[] }>(
-          "/api/materials",
-        );
-        setMaterials(m.items || []);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    loadBaseData();
   }, []);
 
   const filtered = useMemo(() => {
@@ -178,6 +248,43 @@ export default function ProductsClient() {
         (p.sku || "").toLowerCase().includes(needle),
     );
   }, [products, q]);
+
+  const stageNameMap = useMemo(() => {
+    return new Map(stages.map((stage) => [stage.id, stage.name]));
+  }, [stages]);
+
+  function getStageName(row: ProductStageRow) {
+    return stageNameMap.get(row.stage_id) || row.stage_id;
+  }
+
+  const availableStages = useMemo(() => {
+    const used = new Set(productStages.map((x) => x.stage_id));
+    return stages.filter((stage) => !used.has(stage.id));
+  }, [stages, productStages]);
+
+  const hasMaterialLinked = productMaterials.length > 0;
+
+  async function syncProducts() {
+    try {
+      setSyncing(true);
+      setSyncMessage(null);
+      setSyncError(null);
+
+      const result = await j<SyncProductsResponse>("/api/salla/sync/products", {
+        method: "POST",
+      });
+
+      await reloadProductsOnly(active?.salla_product_id || null);
+
+      setSyncMessage(
+        `تم تحديث المنتجات بنجاح${typeof result.productsUpserted === "number" ? ` (${result.productsUpserted})` : ""}`,
+      );
+    } catch (e: any) {
+      setSyncError(e?.message || "تعذر تحديث المنتجات من سلة");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function openSettings(p: SallaProductRow) {
     setActive(p);
@@ -192,19 +299,10 @@ export default function ProductsClient() {
     setPmLoading(true);
 
     try {
-      const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
-        `/api/products/${encodeURIComponent(p.salla_product_id)}/stages`,
-      );
-      setProductStages(
-        (ps.items || []).sort(
-          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
-        ),
-      );
-
-      const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
-        `/api/products/${encodeURIComponent(p.salla_product_id)}/materials`,
-      );
-      setProductMaterials(pm.items || []);
+      await Promise.all([
+        reloadProductStages(p.salla_product_id),
+        reloadProductMaterials(p.salla_product_id),
+      ]);
     } finally {
       setPsLoading(false);
       setPmLoading(false);
@@ -233,15 +331,7 @@ export default function ProductsClient() {
         },
       );
 
-      const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
-        `/api/products/${encodeURIComponent(active.salla_product_id)}/stages`,
-      );
-      setProductStages(
-        (ps.items || []).sort(
-          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
-        ),
-      );
-
+      await reloadProductStages(active.salla_product_id);
       setAddStageId("");
       setAddStagePayout("");
     } finally {
@@ -263,14 +353,7 @@ export default function ProductsClient() {
         },
       );
 
-      const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
-        `/api/products/${encodeURIComponent(active.salla_product_id)}/stages`,
-      );
-      setProductStages(
-        (ps.items || []).sort(
-          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
-        ),
-      );
+      await reloadProductStages(active.salla_product_id);
     } finally {
       setPsLoading(false);
     }
@@ -290,21 +373,14 @@ export default function ProductsClient() {
         },
       );
 
-      const ps = await j<{ ok: boolean; items: ProductStageRow[] }>(
-        `/api/products/${encodeURIComponent(active.salla_product_id)}/stages`,
-      );
-      setProductStages(
-        (ps.items || []).sort(
-          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
-        ),
-      );
+      await reloadProductStages(active.salla_product_id);
     } finally {
       setPsLoading(false);
     }
   }
 
   async function addMaterial() {
-    if (!active || !addMaterialId) return;
+    if (!active || !addMaterialId || hasMaterialLinked) return;
 
     setPmLoading(true);
     try {
@@ -320,10 +396,7 @@ export default function ProductsClient() {
         },
       );
 
-      const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
-        `/api/products/${encodeURIComponent(active.salla_product_id)}/materials`,
-      );
-      setProductMaterials(pm.items || []);
+      await reloadProductMaterials(active.salla_product_id);
       setAddMaterialId("");
       setAddMaterialQty("");
     } finally {
@@ -345,10 +418,7 @@ export default function ProductsClient() {
         },
       );
 
-      const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
-        `/api/products/${encodeURIComponent(active.salla_product_id)}/materials`,
-      );
-      setProductMaterials(pm.items || []);
+      await reloadProductMaterials(active.salla_product_id);
     } finally {
       setPmLoading(false);
     }
@@ -368,10 +438,9 @@ export default function ProductsClient() {
         },
       );
 
-      const pm = await j<{ ok: boolean; items: ProductMaterialRow[] }>(
-        `/api/products/${encodeURIComponent(active.salla_product_id)}/materials`,
-      );
-      setProductMaterials(pm.items || []);
+      await reloadProductMaterials(active.salla_product_id);
+      setAddMaterialId("");
+      setAddMaterialQty("");
     } finally {
       setPmLoading(false);
     }
@@ -395,18 +464,46 @@ export default function ProductsClient() {
                 منتجات سلة مع إعدادات التشغيل وربط المراحل والمواد لكل منتج
               </p>
             </div>
+
+            {syncMessage ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {syncMessage}
+              </div>
+            ) : null}
+
+            {syncError ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {syncError}
+              </div>
+            ) : null}
           </div>
 
-          <div className="w-full xl:w-[320px]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="بحث بالاسم أو SKU"
-                className="h-12 rounded-2xl border-border/70 pr-10"
-              />
+          <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
+            <div className="w-full xl:w-[320px]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="بحث بالاسم أو SKU"
+                  className="h-12 rounded-2xl border-border/70 pr-10"
+                />
+              </div>
             </div>
+
+            <Button
+              type="button"
+              onClick={syncProducts}
+              disabled={syncing}
+              className="h-12 gap-2 rounded-2xl"
+            >
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              تحديث المنتجات
+            </Button>
           </div>
         </div>
       </div>
@@ -556,6 +653,14 @@ export default function ProductsClient() {
                       icon={Workflow}
                       title="المراحل"
                       subtitle="ربط المنتج بمراحل الإنتاج وتحديد سعر المرحلة"
+                      action={
+                        <Link
+                          href="/dashboard/settings/stages"
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          ضبط المراحل
+                        </Link>
+                      }
                     >
                       <div className="space-y-4">
                         <div className="grid gap-2 lg:grid-cols-12">
@@ -566,7 +671,7 @@ export default function ProductsClient() {
                               onChange={(e) => setAddStageId(e.target.value)}
                             >
                               <option value="">اختر مرحلة</option>
-                              {stages.map((s) => (
+                              {availableStages.map((s) => (
                                 <option key={s.id} value={s.id}>
                                   {s.name}
                                 </option>
@@ -589,7 +694,7 @@ export default function ProductsClient() {
                           <div className="lg:col-span-3">
                             <Button
                               type="button"
-                              className="h-11 w-full rounded-2xl gap-2"
+                              className="h-11 w-full gap-2 rounded-2xl"
                               onClick={addStage}
                               disabled={!addStageId || psLoading}
                             >
@@ -624,7 +729,7 @@ export default function ProductsClient() {
                                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
                                   <div className="min-w-0 flex-1 text-right">
                                     <div className="truncate text-sm font-bold">
-                                      {r.stages?.name || r.stage_id}
+                                      {getStageName(r)}
                                     </div>
                                     <div className="mt-1 text-xs text-muted-foreground">
                                       ترتيب: {r.sort_order}
@@ -683,53 +788,78 @@ export default function ProductsClient() {
 
                     <SectionShell
                       icon={Boxes}
-                      title="المخزون (المواد)"
-                      subtitle="ربط المنتج بالمواد الخام وتحديد الاستهلاك لكل قطعة"
+                      title="المخزون (قماش)"
+                      subtitle="ربط المنتج بالقماش الخام وتحديد الاستهلاك لكل قطعة"
+                      action={
+                        <Link
+                          href="/dashboard/inventory"
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          ضبط المخزون
+                        </Link>
+                      }
                     >
                       <div className="space-y-4">
-                        <div className="grid gap-2 lg:grid-cols-12">
-                          <div className="lg:col-span-5">
-                            <select
-                              className="h-11 w-full rounded-2xl border border-border/70 bg-background px-3 text-sm outline-none"
-                              value={addMaterialId}
-                              onChange={(e) => setAddMaterialId(e.target.value)}
-                            >
-                              <option value="">اختر مادة</option>
-                              {materials.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.name}
-                                </option>
-                              ))}
-                            </select>
+                        <div className="space-y-3">
+                          <div className="grid gap-2 lg:grid-cols-12">
+                            <div className="lg:col-span-5">
+                              <select
+                                className="h-11 w-full rounded-2xl border border-border/70 bg-background px-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                                value={addMaterialId}
+                                onChange={(e) =>
+                                  setAddMaterialId(e.target.value)
+                                }
+                                disabled={hasMaterialLinked}
+                              >
+                                <option value="">اختر مادة</option>
+                                {materials.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="lg:col-span-4">
+                              <Input
+                                value={addMaterialQty}
+                                onChange={(e) =>
+                                  setAddMaterialQty(e.target.value)
+                                }
+                                placeholder="كم/متر"
+                                inputMode="decimal"
+                                className="h-11 rounded-2xl border-border/70"
+                                disabled={hasMaterialLinked}
+                              />
+                            </div>
+
+                            <div className="lg:col-span-3">
+                              <Button
+                                type="button"
+                                className="h-11 w-full gap-2 rounded-2xl"
+                                onClick={addMaterial}
+                                disabled={
+                                  !addMaterialId ||
+                                  pmLoading ||
+                                  hasMaterialLinked
+                                }
+                              >
+                                {pmLoading ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Plus className="h-4 w-4" />
+                                )}
+                                إضافة
+                              </Button>
+                            </div>
                           </div>
 
-                          <div className="lg:col-span-4">
-                            <Input
-                              value={addMaterialQty}
-                              onChange={(e) =>
-                                setAddMaterialQty(e.target.value)
-                              }
-                              placeholder="كم/قطعة"
-                              inputMode="decimal"
-                              className="h-11 rounded-2xl border-border/70"
-                            />
-                          </div>
-
-                          <div className="lg:col-span-3">
-                            <Button
-                              type="button"
-                              className="h-11 w-full rounded-2xl gap-2"
-                              onClick={addMaterial}
-                              disabled={!addMaterialId || pmLoading}
-                            >
-                              {pmLoading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Plus className="h-4 w-4" />
-                              )}
-                              إضافة
-                            </Button>
-                          </div>
+                          {hasMaterialLinked ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                              هذا المنتج مرتبط بمادة واحدة فقط. لحفظ مادة جديدة
+                              احذف المادة الحالية أولًا.
+                            </div>
+                          ) : null}
                         </div>
 
                         <Separator />

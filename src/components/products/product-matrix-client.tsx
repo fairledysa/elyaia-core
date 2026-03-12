@@ -347,8 +347,13 @@ export default function ProductMatrixClient() {
         <div>
           <h1 className="text-xl font-semibold"> اعدادات المنتجات</h1>
           <p className="text-sm text-muted-foreground">
-            تعديل جماعي سريع — (تفعيل/سعر المرحلة) + (قماش/كمية لكل قطعة)
+            تعديل جماعي سريع لإعدادات التشغيل لكل منتج.
           </p>
+
+          <div className="mt-2 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+            ✔️ علامة الصح تعني أن المنتج يمر على هذه المرحلة أثناء الإنتاج. 💰
+            الرقم تحتها هو أجر أو تكلفة تنفيذ هذه المرحلة لكل قطعة.
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

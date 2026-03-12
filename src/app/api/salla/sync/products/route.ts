@@ -42,6 +42,36 @@ async function sallaGet(url: string, accessToken: string) {
   }
 }
 
+function normalizeProduct(p: any, installationId: string) {
+  const pid = p?.id != null ? String(p.id) : null;
+  if (!pid) return null;
+
+  const name = p?.name ?? p?.title ?? null;
+  const sku = p?.sku ?? null;
+  const price = p?.price?.amount ?? p?.price ?? null;
+  const currency = p?.price?.currency ?? p?.currency ?? null;
+  const status = p?.status?.slug ?? p?.status ?? null;
+  const imageUrl =
+    p?.images?.[0]?.url ??
+    p?.image?.url ??
+    p?.thumbnail?.url ??
+    p?.thumbnail ??
+    null;
+
+  return {
+    installation_id: installationId,
+    salla_product_id: pid,
+    name: name ? String(name) : null,
+    sku: sku ? String(sku) : null,
+    price: price != null && price !== "" ? Number(price) : null,
+    currency: currency ? String(currency) : null,
+    status: status ? String(status) : null,
+    image_url: imageUrl ? String(imageUrl) : null,
+    raw: p,
+    updated_at: new Date().toISOString(),
+  };
+}
+
 export async function POST() {
   const trace = `sync-products-${Date.now()}`;
 
@@ -112,41 +142,28 @@ export async function POST() {
       );
     }
 
-    const j = await sallaGet(
-      "https://api.salla.dev/admin/v2/products?per_page=50",
-      accessToken,
-    );
+    const allRows: any[] = [];
+    let page = 1;
+    const perPage = 50;
 
-    const products: any[] = Array.isArray(j?.data) ? j.data : [];
+    while (true) {
+      const url = `https://api.salla.dev/admin/v2/products?per_page=${perPage}&page=${page}`;
+      const j = await sallaGet(url, accessToken);
 
-    const rows = products
-      .map((p) => {
-        const pid = p?.id != null ? String(p.id) : null;
-        if (!pid) return null;
+      const products: any[] = Array.isArray(j?.data) ? j.data : [];
+      if (!products.length) break;
 
-        const name = p?.name ?? p?.title ?? null;
-        const sku = p?.sku ?? null;
-        const price = p?.price?.amount ?? p?.price ?? null;
-        const currency = p?.price?.currency ?? p?.currency ?? null;
-        const status = p?.status?.slug ?? p?.status ?? null;
-        const imageUrl = p?.images?.[0]?.url ?? p?.thumbnail ?? null;
+      const rows = products
+        .map((p) => normalizeProduct(p, installationId))
+        .filter(Boolean) as any[];
 
-        return {
-          installation_id: installationId,
-          salla_product_id: pid,
-          name: name ? String(name) : null,
-          sku: sku ? String(sku) : null,
-          price: price != null ? Number(price) : null,
-          currency: currency ? String(currency) : null,
-          status: status ? String(status) : null,
-          image_url: imageUrl ? String(imageUrl) : null,
-          raw: p,
-          updated_at: new Date().toISOString(),
-        };
-      })
-      .filter(Boolean) as any[];
+      allRows.push(...rows);
 
-    if (!rows.length) {
+      if (products.length < perPage) break;
+      page += 1;
+    }
+
+    if (!allRows.length) {
       return NextResponse.json({
         ok: true,
         tenantId,
@@ -158,7 +175,7 @@ export async function POST() {
 
     const up = await admin
       .from("salla_products")
-      .upsert(rows, { onConflict: "installation_id,salla_product_id" });
+      .upsert(allRows, { onConflict: "installation_id,salla_product_id" });
 
     if (up.error) {
       return NextResponse.json(
@@ -171,7 +188,7 @@ export async function POST() {
       ok: true,
       tenantId,
       installationId,
-      productsUpserted: rows.length,
+      productsUpserted: allRows.length,
       trace,
     });
   } catch (e: any) {
