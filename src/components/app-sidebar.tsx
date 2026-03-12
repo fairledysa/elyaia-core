@@ -45,7 +45,11 @@ const mainItems = [
     icon: Printer,
   },
   { title: "المنتجات", href: "/dashboard/products", icon: Package },
-  { title: "Product Matrix", href: "/dashboard/products/matrix", icon: Table },
+  {
+    title: "اعدادات المنتجات",
+    href: "/dashboard/products/matrix",
+    icon: Table,
+  },
 ];
 
 const managementItems = [

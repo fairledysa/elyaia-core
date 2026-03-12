@@ -345,7 +345,7 @@ export default function ProductMatrixClient() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Product Matrix</h1>
+          <h1 className="text-xl font-semibold"> اعدادات المنتجات</h1>
           <p className="text-sm text-muted-foreground">
             تعديل جماعي سريع — (تفعيل/سعر المرحلة) + (قماش/كمية لكل قطعة)
           </p>

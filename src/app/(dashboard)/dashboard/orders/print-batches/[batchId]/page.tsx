@@ -724,22 +724,8 @@ export default async function Page({
                     </div>
                   </div>
 
-                  <div className="grid flex-1 grid-cols-[110px_1fr] gap-4 p-4">
-                    <div className="flex h-[110px] w-[110px] items-center justify-center overflow-hidden rounded-xl border bg-neutral-50">
-                      {card.imageUrl ? (
-                        <img
-                          src={card.imageUrl}
-                          alt={card.itemName || "product"}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="text-center text-xs text-neutral-400">
-                          لا توجد صورة
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex min-w-0 flex-col gap-2 text-right">
+                  <div className="flex flex-1 gap-4 p-4">
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 text-right">
                       {card.itemName && (
                         <div>
                           <div className="text-xs text-neutral-500">المنتج</div>
@@ -801,32 +787,45 @@ export default async function Page({
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  <div className="border-t px-4 py-2">
-                    <div className="grid grid-cols-[96px_1fr] items-end gap-4">
-                      <div className="flex h-[88px] w-[88px] items-center justify-center rounded-xl border bg-white p-2">
-                        <img
-                          alt={card.qrCode}
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                            card.qrCode,
-                          )}`}
-                          className="h-full w-full"
-                        />
+                    <div className="flex w-[132px] shrink-0 flex-col items-center justify-between">
+                      <div className="flex h-[110px] w-[110px] items-center justify-center overflow-hidden rounded-xl border bg-neutral-50">
+                        {card.imageUrl ? (
+                          <img
+                            src={card.imageUrl}
+                            alt={card.itemName || "product"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-center text-xs text-neutral-400">
+                            لا توجد صورة
+                          </div>
+                        )}
                       </div>
 
-                      <div className="text-right">
-                        <div className="text-xs text-neutral-500">
-                          QR / الباركود
-                        </div>
-                        <div className="mt-1 break-all rounded-lg border bg-neutral-50 px-3 py-2 font-mono text-[11px] leading-5">
-                          {card.qrCode}
-                        </div>
+                      <div className="flex h-[112px] w-[112px] items-center justify-center rounded-xl border bg-white p-2">
+                        <img
+                          alt={card.qrCode}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(
+                            card.qrCode,
+                          )}`}
+                          className="h-full w-full object-contain [image-rendering:pixelated]"
+                          loading="eager"
+                          decoding="sync"
+                        />
                       </div>
                     </div>
                   </div>
                 </div>
               ))}
+
+              {page.length < 4 &&
+                Array.from({ length: 4 - page.length }).map((_, i) => (
+                  <div
+                    key={`empty-${pageIndex}-${i}`}
+                    className="print-card h-[122mm] rounded-2xl border border-dashed border-neutral-200 bg-white"
+                  />
+                ))}
             </div>
           ))
         )}
