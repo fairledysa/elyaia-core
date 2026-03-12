@@ -1,7 +1,7 @@
 // FILE: src/app/page.tsx
 
 import Link from "next/link";
-  
+
 function SectionTitle({
   badge,
   title,
@@ -113,6 +113,15 @@ export default function HomePage() {
             </a>
             <a href="#stages" className="transition hover:text-slate-950">
               المراحل
+            </a>
+            <a href="#support" className="transition hover:text-slate-950">
+              الدعم الفني
+            </a>
+            <a href="#privacy" className="transition hover:text-slate-950">
+              سياسة الخصوصية
+            </a>
+            <a href="#faq" className="transition hover:text-slate-950">
+              الأسئلة الشائعة
             </a>
             <a href="#contact" className="transition hover:text-slate-950">
               اتصل بنا
@@ -259,6 +268,40 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-[28px] border border-white/10 bg-white/10 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+                <div className="text-lg font-black text-white">
+                  إدارة التشغيل
+                </div>
+                <p className="mt-3 text-sm leading-8 text-white/75">
+                  ربط الطلبات الواردة من سلة بالمشغل مباشرة، وتحويلها إلى خطوات
+                  تنفيذ واضحة يمكن متابعتها بدقة من البداية حتى التسليم.
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-white/10 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+                <div className="text-lg font-black text-white">
+                  تنفيذ بالباركود
+                </div>
+                <p className="mt-3 text-sm leading-8 text-white/75">
+                  كل قطعة لها باركود خاص بها، والعامل يمسحها عند التنفيذ لتسجيل
+                  المرحلة والعامل والتاريخ بشكل تلقائي داخل النظام.
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-white/10 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+                <div className="text-lg font-black text-white">
+                  تقارير ومحاسبة
+                </div>
+                <p className="mt-3 text-sm leading-8 text-white/75">
+                  متابعة جاهزية الطلبات، إنتاجية العامل، المحفظة المالية،
+                  والمخزون من خلال لوحة واضحة تناسب العمل اليومي داخل المشغل.
+                </p>
               </div>
             </div>
           </div>
@@ -489,6 +532,123 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section id="support" className="scroll-mt-28 px-4 py-20 md:px-6">
+        <SectionTitle
+          badge="الدعم الفني"
+          title="فريق جاهز لمساعدتك في أي وقت تحتاجه"
+          desc="إذا واجهتك أي مشكلة في تشغيل النظام أو الربط أو الصلاحيات أو مسارات العمل داخل المشغل، يمكنك التواصل معنا مباشرة لنساعدك في حل المشكلة بسرعة ووضوح."
+        />
+
+        <div className="mx-auto mt-12 grid max-w-6xl gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-[30px] border border-slate-200 bg-white p-7 shadow-sm">
+            <div className="text-xl font-black text-slate-950">
+              كيف يساعدك الدعم الفني؟
+            </div>
+            <p className="mt-4 text-sm leading-8 text-slate-600">
+              نساعدك في مشاكل تسجيل الدخول، الربط مع سلة، إعداد مراحل الإنتاج،
+              الطباعة، الباركود، متابعة الحسابات، وإصلاح أي مشكلة تعيق العمل
+              اليومي داخل المشغل.
+            </p>
+            <p className="mt-4 text-sm leading-8 text-slate-600">
+              كل ما عليك هو إرسال وصف واضح للمشكلة واسم المنشأة أو رقم الطلب إن
+              وجد، وسنقوم بمتابعة الحالة معك حتى يتم حلها.
+            </p>
+          </div>
+
+          <div className="rounded-[30px] border border-slate-200 bg-[linear-gradient(135deg,#0f172a,#1d4ed8,#7c3aed)] p-7 text-white shadow-[0_20px_80px_rgba(37,99,235,0.20)]">
+            <div className="text-sm font-black text-white/75">
+              البريد الإلكتروني للدعم
+            </div>
+            <div className="mt-4 break-all text-2xl font-black">
+              bkeficom@gmail.com
+            </div>
+            <p className="mt-4 text-sm leading-8 text-white/80">
+              اكتب لنا تفاصيل المشكلة أو الاستفسار، وسنقوم بالرد عليك ومتابعة
+              الحالة بالشكل المناسب.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="privacy"
+        className="scroll-mt-28 bg-white px-4 py-20 md:px-6"
+      >
+        <SectionTitle
+          badge="سياسة الخصوصية"
+          title="بياناتك داخل النظام تعامل بسرية وحماية"
+          desc="نحن نلتزم بحماية بيانات المتجر والطلبات والعاملين والعمليات التشغيلية داخل النظام، ونعمل على استخدام البيانات فقط للأغراض المرتبطة بتقديم الخدمة وتحسينها."
+        />
+
+        <div className="mx-auto mt-12 grid max-w-7xl gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <InfoCard
+            title="استخدام البيانات"
+            desc="يتم استخدام البيانات فقط لتشغيل النظام، إدارة الطلبات، متابعة مراحل الإنتاج، تحسين تجربة الاستخدام، وتقديم الدعم الفني عند الحاجة."
+          />
+          <InfoCard
+            title="عدم مشاركة البيانات"
+            desc="لا يتم بيع البيانات أو مشاركتها مع أي طرف ثالث خارج نطاق الخدمة، إلا عند وجود متطلب تقني ضروري لتشغيل النظام أو التزام نظامي ملزم."
+          />
+          <InfoCard
+            title="حماية الوصول"
+            desc="نحرص على أن تكون صلاحيات الوصول والبيانات التشغيلية داخل النظام منظمة وآمنة بما يتناسب مع طبيعة العمل داخل المشغل والمنشأة."
+          />
+        </div>
+      </section>
+
+      <section id="faq" className="scroll-mt-28 px-4 py-20 md:px-6">
+        <SectionTitle
+          badge="الأسئلة الشائعة"
+          title="إجابات واضحة عن أكثر الأسئلة تكرارًا"
+          desc="هذه أبرز الأسئلة التي يطرحها أصحاب المتاجر والمشاغل عند استخدام النظام لأول مرة أو عند بدء تشغيل الإنتاج وربطه مع سلة."
+        />
+
+        <div className="mx-auto mt-12 grid max-w-6xl gap-6">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="text-lg font-black text-slate-950">
+              كيف يتم تتبع الطلبات داخل المشغل؟
+            </div>
+            <p className="mt-3 text-sm leading-8 text-slate-600">
+              يتم تحويل الطلب القادم من سلة إلى بطاقة تشغيل داخلية، وكل قطعة
+              يكون لها باركود خاص بها. عند مسح الباركود يسجل النظام المرحلة
+              الحالية والعامل المسؤول ووقت التنفيذ.
+            </p>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="text-lg font-black text-slate-950">
+              هل يمكن متابعة المخزون والمواد الخام؟
+            </div>
+            <p className="mt-3 text-sm leading-8 text-slate-600">
+              نعم، النظام يدعم تعريف المواد الخام، وحركات الإضافة والصرف
+              والتعديل، والتنبيهات عند انخفاض الكمية، وربط المواد بالمنتجات
+              والمراحل التشغيلية.
+            </p>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="text-lg font-black text-slate-950">
+              هل النظام مرتبط مع منصة سلة؟
+            </div>
+            <p className="mt-3 text-sm leading-8 text-slate-600">
+              نعم، يتم جلب الطلبات من سلة وتحويلها مباشرة إلى عناصر إنتاج داخل
+              المشغل، مما يختصر الإدخال اليدوي ويجعل المتابعة أكثر دقة.
+            </p>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="text-lg font-black text-slate-950">
+              كيف يتم احتساب مستحقات العامل؟
+            </div>
+            <p className="mt-3 text-sm leading-8 text-slate-600">
+              يمكن احتسابها براتب ثابت أو بالحبة أو وفق تسعيرة مرتبطة بالمنتج أو
+              المرحلة، وكل تنفيذ يتم تسجيله داخل النظام ليظهر أثره في المحفظة
+              المالية للعامل.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="px-4 py-20 md:px-6" id="contact">
         <SectionTitle
           badge="اتصل بنا"
@@ -500,13 +660,8 @@ export default function HomePage() {
           <div className="rounded-[30px] border border-slate-200 bg-slate-50 p-6 text-center">
             <div className="text-sm font-black text-slate-950">البريد</div>
             <div className="mt-3 text-sm text-slate-600">
-              support@elyaia.com
+              bkeficom@gmail.com
             </div>
-          </div>
-
-          <div className="rounded-[30px] border border-slate-200 bg-slate-50 p-6 text-center">
-            <div className="text-sm font-black text-slate-950">الهاتف</div>
-            <div className="mt-3 text-sm text-slate-600">+966 500000000</div>
           </div>
 
           <div className="rounded-[30px] border border-slate-200 bg-slate-50 p-6 text-center">
@@ -579,6 +734,15 @@ export default function HomePage() {
             </a>
             <a href="#stages" className="hover:text-slate-950">
               المراحل
+            </a>
+            <a href="#support" className="hover:text-slate-950">
+              الدعم الفني
+            </a>
+            <a href="#privacy" className="hover:text-slate-950">
+              سياسة الخصوصية
+            </a>
+            <a href="#faq" className="hover:text-slate-950">
+              الأسئلة الشائعة
             </a>
             <a href="#contact" className="hover:text-slate-950">
               اتصل بنا

@@ -148,6 +148,20 @@ function buildUuidInFilter(column: string, ids: string[]) {
   return `${column}.in.(${ids.join(",")})`;
 }
 
+function applySearchOrFilters<T extends { or: (filters: string) => T }>(
+  query: T,
+  matchedOrderIds: string[],
+  matchedProductionIds: string[],
+) {
+  const orParts = [
+    buildUuidInFilter("order_id", matchedOrderIds),
+    buildUuidInFilter("id", matchedProductionIds),
+  ].filter(Boolean) as string[];
+
+  if (orParts.length === 0) return null;
+  return query.or(orParts.join(","));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const sb = await createSupabaseServerClient();
@@ -193,26 +207,13 @@ export async function GET(req: NextRequest) {
 
     const stages = (stagesData || []) as StageRow[];
 
-    // -----------------------------
-    // 1) تحديد القيود الأساسية من قاعدة البيانات فقط
-    // -----------------------------
-    let baseQuery = admin
-      .from("production_items")
-      .select(
-        "id, order_id, salla_item_id, quantity_index, qr_code, status, printed_at, print_sequence, print_batch_id",
-        { count: "exact" },
-      )
-      .eq("tenant_id", tenantId)
-      .not("print_batch_id", "is", null);
-
-    if (mode === "active") {
-      baseQuery = baseQuery.neq("status", "done");
-    } else if (mode === "completed") {
-      baseQuery = baseQuery.eq("status", "done");
-    }
+    let matchedOrderIds: string[] = [];
+    let matchedProductionIds: string[] = [];
 
     // -----------------------------
-    // 2) لو فيه بحث: نضيّق النتائج قبل الـ pagination
+    // 1) تجهيز نتائج البحث مسبقًا لكي تُستخدم في:
+    //    - pagination
+    //    - stats
     // -----------------------------
     if (qLower) {
       const [orderMatchesRes, orderItemMatchesRes, qrMatchesRes] =
@@ -266,7 +267,7 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      const matchedOrderIds = Array.from(
+      matchedOrderIds = Array.from(
         new Set([
           ...(orderMatchesRes.data || []).map((x: { id: string }) => x.id),
           ...(orderItemMatchesRes.data || []).map(
@@ -275,16 +276,62 @@ export async function GET(req: NextRequest) {
         ]),
       );
 
-      const matchedProductionIds = Array.from(
+      matchedProductionIds = Array.from(
         new Set((qrMatchesRes.data || []).map((x: { id: string }) => x.id)),
       );
 
-      const orParts = [
-        buildUuidInFilter("order_id", matchedOrderIds),
-        buildUuidInFilter("id", matchedProductionIds),
-      ].filter(Boolean) as string[];
+      if (matchedOrderIds.length === 0 && matchedProductionIds.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          stats: {
+            totalPrinted: 0,
+            notStarted: 0,
+            inProgress: 0,
+            completed: 0,
+            totalStages: stages.length,
+          },
+          pagination: {
+            page,
+            pageSize,
+            total: 0,
+            totalPages: 0,
+          },
+          stages: stages.map((s) => ({
+            id: s.id,
+            name: s.name,
+            sortOrder: s.sort_order,
+          })),
+          rows: [],
+        });
+      }
+    }
 
-      if (orParts.length === 0) {
+    // -----------------------------
+    // 2) query الأساسية للصفحة
+    // -----------------------------
+    let baseQuery = admin
+      .from("production_items")
+      .select(
+        "id, order_id, salla_item_id, quantity_index, qr_code, status, printed_at, print_sequence, print_batch_id",
+        { count: "exact" },
+      )
+      .eq("tenant_id", tenantId)
+      .not("print_batch_id", "is", null);
+
+    if (mode === "active") {
+      baseQuery = baseQuery.neq("status", "done");
+    } else if (mode === "completed") {
+      baseQuery = baseQuery.eq("status", "done");
+    }
+
+    if (qLower) {
+      const narrowed = applySearchOrFilters(
+        baseQuery,
+        matchedOrderIds,
+        matchedProductionIds,
+      );
+
+      if (!narrowed) {
         return NextResponse.json({
           ok: true,
           stats: {
@@ -309,11 +356,119 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      baseQuery = baseQuery.or(orParts.join(","));
+      baseQuery = narrowed;
     }
 
     // -----------------------------
-    // 3) نجيب فقط عناصر الصفحة الحالية
+    // 3) حساب الإحصائيات الصحيحة بنفس منطق الصفوف
+    //    completed = done
+    //    not_started = ليس done + لا يوجد stage_events
+    //    in_progress = ليس done + يوجد stage_events
+    // -----------------------------
+    let statsUniverseQuery = admin
+      .from("production_items")
+      .select("id, status, order_id", { count: "exact" })
+      .eq("tenant_id", tenantId)
+      .not("print_batch_id", "is", null);
+
+    if (mode === "active") {
+      statsUniverseQuery = statsUniverseQuery.neq("status", "done");
+    } else if (mode === "completed") {
+      statsUniverseQuery = statsUniverseQuery.eq("status", "done");
+    }
+
+    if (qLower) {
+      const narrowedStats = applySearchOrFilters(
+        statsUniverseQuery,
+        matchedOrderIds,
+        matchedProductionIds,
+      );
+
+      if (!narrowedStats) {
+        return NextResponse.json({
+          ok: true,
+          stats: {
+            totalPrinted: 0,
+            notStarted: 0,
+            inProgress: 0,
+            completed: 0,
+            totalStages: stages.length,
+          },
+          pagination: {
+            page,
+            pageSize,
+            total: 0,
+            totalPages: 0,
+          },
+          stages: stages.map((s) => ({
+            id: s.id,
+            name: s.name,
+            sortOrder: s.sort_order,
+          })),
+          rows: [],
+        });
+      }
+
+      statsUniverseQuery = narrowedStats;
+    }
+
+    const { data: statsItemsData, error: statsItemsError } =
+      await statsUniverseQuery;
+
+    if (statsItemsError) {
+      return NextResponse.json(
+        { ok: false, error: statsItemsError.message },
+        { status: 500 },
+      );
+    }
+
+    const statsItems = (statsItemsData || []) as Pick<
+      ProductionItemRow,
+      "id" | "status" | "order_id"
+    >[];
+
+    const statsProductionIds = statsItems.map((x) => x.id);
+
+    let statsCompleted = 0;
+    let statsNotStarted = 0;
+    let statsInProgress = 0;
+
+    if (statsProductionIds.length > 0) {
+      const { data: statsStageEventsData, error: statsStageEventsError } =
+        await admin
+          .from("stage_events")
+          .select("production_item_id")
+          .eq("tenant_id", tenantId)
+          .in("production_item_id", statsProductionIds);
+
+      if (statsStageEventsError) {
+        return NextResponse.json(
+          { ok: false, error: statsStageEventsError.message },
+          { status: 500 },
+        );
+      }
+
+      const statsStartedSet = new Set(
+        (statsStageEventsData || []).map(
+          (ev: { production_item_id: string }) => ev.production_item_id,
+        ),
+      );
+
+      for (const item of statsItems) {
+        if (item.status === "done") {
+          statsCompleted += 1;
+        } else if (statsStartedSet.has(item.id)) {
+          statsInProgress += 1;
+        } else {
+          statsNotStarted += 1;
+        }
+      }
+    }
+
+    const statsTotalPrinted = statsItems.length;
+
+    // -----------------------------
+    // 4) نجيب فقط عناصر الصفحة الحالية
     // -----------------------------
     const {
       data: pageItemsData,
@@ -336,37 +491,13 @@ export async function GET(req: NextRequest) {
     const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
 
     if (pageItems.length === 0) {
-      // إحصائيات خفيفة
-      const [totalPrintedRes, totalCompletedRes, totalActiveRes] =
-        await Promise.all([
-          admin
-            .from("production_items")
-            .select("*", { count: "exact", head: true })
-            .eq("tenant_id", tenantId)
-            .not("print_batch_id", "is", null),
-
-          admin
-            .from("production_items")
-            .select("*", { count: "exact", head: true })
-            .eq("tenant_id", tenantId)
-            .not("print_batch_id", "is", null)
-            .eq("status", "done"),
-
-          admin
-            .from("production_items")
-            .select("*", { count: "exact", head: true })
-            .eq("tenant_id", tenantId)
-            .not("print_batch_id", "is", null)
-            .neq("status", "done"),
-        ]);
-
       return NextResponse.json({
         ok: true,
         stats: {
-          totalPrinted: totalPrintedRes.count || 0,
-          notStarted: 0,
-          inProgress: totalActiveRes.count || 0,
-          completed: totalCompletedRes.count || 0,
+          totalPrinted: statsTotalPrinted,
+          notStarted: statsNotStarted,
+          inProgress: statsInProgress,
+          completed: statsCompleted,
           totalStages: stages.length,
         },
         pagination: {
@@ -385,7 +516,7 @@ export async function GET(req: NextRequest) {
     }
 
     // -----------------------------
-    // 4) الآن فقط نجيب البيانات المرتبطة بهذه الصفحة
+    // 5) الآن فقط نجيب البيانات المرتبطة بهذه الصفحة
     // -----------------------------
     const pageProductionItemIds = pageItems.map((x) => x.id);
     const pageOrderIds = Array.from(new Set(pageItems.map((x) => x.order_id)));
@@ -479,7 +610,7 @@ export async function GET(req: NextRequest) {
     const profiles = (profilesRes.data || []) as ProfileRow[];
 
     // -----------------------------
-    // 5) بناء خرائط سريعة للصفحة الحالية فقط
+    // 6) بناء خرائط سريعة للصفحة الحالية فقط
     // -----------------------------
     const profileNameMap = new Map(
       profiles.map((p) => [p.id, p.full_name || "عامل"]),
@@ -537,7 +668,7 @@ export async function GET(req: NextRequest) {
     }
 
     // -----------------------------
-    // 6) نركب صفوف الصفحة فقط
+    // 7) نركب صفوف الصفحة فقط
     // -----------------------------
     const rows = pageItems.map((item) => {
       const orderMeta = ordersMap.get(item.order_id) || {
@@ -628,39 +759,13 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // -----------------------------
-    // 7) إحصائيات خفيفة وسريعة نسبيًا
-    // -----------------------------
-    const [totalPrintedRes, totalCompletedRes, totalActiveRes] =
-      await Promise.all([
-        admin
-          .from("production_items")
-          .select("*", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .not("print_batch_id", "is", null),
-
-        admin
-          .from("production_items")
-          .select("*", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .not("print_batch_id", "is", null)
-          .eq("status", "done"),
-
-        admin
-          .from("production_items")
-          .select("*", { count: "exact", head: true })
-          .eq("tenant_id", tenantId)
-          .not("print_batch_id", "is", null)
-          .neq("status", "done"),
-      ]);
-
     return NextResponse.json({
       ok: true,
       stats: {
-        totalPrinted: totalPrintedRes.count || 0,
-        notStarted: 0,
-        inProgress: totalActiveRes.count || 0,
-        completed: totalCompletedRes.count || 0,
+        totalPrinted: statsTotalPrinted,
+        notStarted: statsNotStarted,
+        inProgress: statsInProgress,
+        completed: statsCompleted,
         totalStages: stages.length,
       },
       pagination: {
