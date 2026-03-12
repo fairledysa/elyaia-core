@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import jsQR from "jsqr";
 import {
   AlertCircle,
   Camera,
@@ -174,13 +174,15 @@ function mapConfirmSuccessMessage(data: ScanApiResponse) {
 
 export default function ProductionScanPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanTimerRef = useRef<number | null>(null);
+
   const isMountedRef = useRef(true);
   const isScanningRef = useRef(false);
   const lastDetectedCodeRef = useRef("");
   const lastDetectedAtRef = useRef(0);
-
-  const scannerRegionId = "production-qr-reader";
 
   const [qrValue, setQrValue] = useState("");
   const [loading, setLoading] = useState(false);
@@ -230,17 +232,20 @@ export default function ProductionScanPage() {
   }, []);
 
   async function stopCamera() {
-    try {
-      if (scannerRef.current?.isScanning) {
-        await scannerRef.current.stop();
-      }
-    } catch {}
+    if (scanTimerRef.current) {
+      window.clearInterval(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
 
-    try {
-      await scannerRef.current?.clear();
-    } catch {}
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
 
-    scannerRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
     isScanningRef.current = false;
 
     if (isMountedRef.current) {
@@ -248,72 +253,87 @@ export default function ProductionScanPage() {
     }
   }
 
+  async function scanFrame() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas || loading || confirming || isScanningRef.current) {
+      return;
+    }
+
+    if (video.readyState < 2) return;
+
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+
+    if (!width || !height) return;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const imageData = ctx.getImageData(0, 0, width, height);
+
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "attemptBoth",
+    });
+
+    const value = String(code?.data || "").trim();
+    if (!value) return;
+
+    const now = Date.now();
+    const isSameCode = lastDetectedCodeRef.current === value;
+    const isTooSoon = now - lastDetectedAtRef.current < 2500;
+
+    if (isSameCode && isTooSoon) return;
+
+    isScanningRef.current = true;
+    lastDetectedCodeRef.current = value;
+    lastDetectedAtRef.current = now;
+
+    setQrValue(value);
+    await handlePreview(value);
+
+    window.setTimeout(() => {
+      isScanningRef.current = false;
+    }, 1200);
+  }
+
   async function startCamera() {
-    if (manualMode || scannerRef.current) return;
+    if (manualMode || streamRef.current) return;
 
     try {
       setCameraStarting(true);
       setCameraError("");
 
-      const scanner = new Html5Qrcode(scannerRegionId, {
-        verbose: false,
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-      });
-      scannerRef.current = scanner;
-
-      const isMobile =
-        typeof window !== "undefined" &&
-        /iPhone|iPad|iPod|Android/i.test(window.navigator.userAgent);
-
-      const onScanSuccess = async (decodedText: string) => {
-        const value = String(decodedText || "").trim();
-        if (!value || loading || confirming || isScanningRef.current) return;
-
-        const now = Date.now();
-        const isSameCode = lastDetectedCodeRef.current === value;
-        const isTooSoon = now - lastDetectedAtRef.current < 2500;
-
-        if (isSameCode && isTooSoon) return;
-
-        isScanningRef.current = true;
-        lastDetectedCodeRef.current = value;
-        lastDetectedAtRef.current = now;
-
-        setQrValue(value);
-        await handlePreview(value);
-
-        window.setTimeout(() => {
-          isScanningRef.current = false;
-        }, 1200);
-      };
-
-      const config = {
-        fps: isMobile ? 18 : 12,
-        qrbox: isMobile
-          ? { width: 260, height: 260 }
-          : { width: 280, height: 280 },
-        aspectRatio: 1,
-        disableFlip: false,
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true,
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
-      };
+        audio: false,
+      });
 
-      try {
-        await scanner.start(
-          { facingMode: { exact: "environment" } },
-          config,
-          onScanSuccess,
-          () => {},
-        );
-      } catch {
-        await scanner.start(
-          { facingMode: "environment" },
-          config,
-          onScanSuccess,
-          () => {},
-        );
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true");
+        videoRef.current.muted = true;
+        await videoRef.current.play();
       }
+
+      if (scanTimerRef.current) {
+        window.clearInterval(scanTimerRef.current);
+      }
+
+      scanTimerRef.current = window.setInterval(() => {
+        scanFrame();
+      }, 180);
 
       if (isMountedRef.current) {
         setCameraReady(true);
@@ -323,7 +343,7 @@ export default function ProductionScanPage() {
       if (isMountedRef.current) {
         setCameraReady(false);
         setCameraError(
-          "تعذر تشغيل الكاميرا أو قراءة QR. جرّب تقريب الكود أو استخدم الإدخال اليدوي",
+          "تعذر تشغيل الكاميرا أو قراءة QR. اسمح بالوصول إلى الكاميرا أو استخدم الإدخال اليدوي",
         );
       }
       await stopCamera();
@@ -531,46 +551,7 @@ export default function ProductionScanPage() {
 
   return (
     <>
-      <style jsx global>{`
-        #production-qr-reader {
-          width: 100% !important;
-          height: 100% !important;
-          position: absolute !important;
-          inset: 0 !important;
-          overflow: hidden !important;
-          border: 0 !important;
-          background: transparent !important;
-        }
-
-        #production-qr-reader video {
-          width: 100% !important;
-          height: 100% !important;
-          object-fit: cover !important;
-          border-radius: 24px !important;
-          transform: none !important;
-          filter: contrast(1.08) saturate(1.05) brightness(1.02) !important;
-        }
-
-        #production-qr-reader canvas {
-          display: none !important;
-        }
-
-        #production-qr-reader__dashboard,
-        #production-qr-reader__scan_region img {
-          display: none !important;
-        }
-
-        #production-qr-reader__scan_region {
-          width: 100% !important;
-          height: 100% !important;
-          min-height: 100% !important;
-          display: flex !important;
-          align-items: stretch !important;
-          justify-content: stretch !important;
-          border: 0 !important;
-          padding: 0 !important;
-        }
-      `}</style>
+      <canvas ref={canvasRef} className="hidden" />
 
       <div className="space-y-4">
         <section className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-slate-100">
@@ -598,9 +579,12 @@ export default function ProductionScanPage() {
 
             <div className="relative h-[320px] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_55%)] sm:h-[380px]">
               {!manualMode && (
-                <div
-                  id={scannerRegionId}
-                  className="absolute inset-0 h-full w-full overflow-hidden"
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="absolute inset-0 h-full w-full object-cover"
                 />
               )}
 
