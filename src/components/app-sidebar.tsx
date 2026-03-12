@@ -5,7 +5,6 @@ import {
   Home,
   Package,
   ShoppingCart,
-  Settings,
   Table,
   Users,
   Printer,
@@ -15,6 +14,7 @@ import {
   Boxes,
   Bell,
   Sparkles,
+  ScanLine,
 } from "lucide-react";
 
 import {
@@ -43,6 +43,11 @@ const mainItems = [
     title: "دفعات الطباعة",
     href: "/dashboard/orders/print-batches",
     icon: Printer,
+  },
+  {
+    title: "تتبع الإنتاج",
+    href: "/dashboard/tracking",
+    icon: ScanLine,
   },
   { title: "المنتجات", href: "/dashboard/products", icon: Package },
   {
