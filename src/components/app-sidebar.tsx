@@ -45,7 +45,7 @@ const mainItems = [
     icon: Printer,
   },
   {
-    title: "تتبع الإنتاج",
+    title: "تتبـع الإنتاج",
     href: "/dashboard/tracking",
     icon: ScanLine,
   },
