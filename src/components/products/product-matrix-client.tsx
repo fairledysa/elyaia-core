@@ -5,7 +5,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Upload, Download } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  Upload,
+  Download,
+  RefreshCw,
+} from "lucide-react";
 
 type Product = {
   salla_product_id: string;
@@ -40,6 +46,38 @@ type ProductMaterialApiRow = {
   qty_per_piece: number;
 };
 
+type SyncProductsResponse = {
+  ok: boolean;
+  error?: string;
+  trace?: string;
+  tenantId?: string;
+  installationId?: string;
+  productsUpserted?: number;
+  jobId?: string;
+  total?: number;
+  processed?: number;
+};
+
+type SyncJob = {
+  id: string;
+  tenant_id: string;
+  installation_id: string;
+  job_type: string;
+  status: "running" | "success" | "failed" | "pending";
+  total: number | null;
+  processed: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  last_error: string | null;
+  trace: string | null;
+};
+
+type SyncStatusResponse = {
+  ok: boolean;
+  job: SyncJob | null;
+  progress: number;
+};
+
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, cache: "no-store" });
   const txt = await res.text();
@@ -51,10 +89,19 @@ function keyPS(productId: string, stageId: string) {
   return `${productId}__${stageId}`;
 }
 
+function statusLabel(job: SyncJob | null) {
+  if (!job) return "لا توجد مزامنة حديثة";
+  if (job.status === "running") return "جاري مزامنة جميع المنتجات مع سلة";
+  if (job.status === "success") return "آخر مزامنة اكتملت بنجاح";
+  if (job.status === "failed") return "آخر مزامنة فشلت";
+  return "حالة غير معروفة";
+}
+
 export default function ProductMatrixClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -72,6 +119,11 @@ export default function ProductMatrixClient() {
   const [materialEdits, setMaterialEdits] = useState<
     Record<string, { material_id: string; qty: string }>
   >({});
+
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
+  const [syncProgress, setSyncProgress] = useState(0);
 
   const dirtyCount = useMemo(() => {
     return (
@@ -132,9 +184,35 @@ export default function ProductMatrixClient() {
     }
   }
 
+  async function loadSyncStatus() {
+    try {
+      const res = await j<SyncStatusResponse>("/api/salla/sync/products/status");
+      setSyncJob(res.job || null);
+      setSyncProgress(res.progress || 0);
+      setSyncing(res.job?.status === "running");
+    } catch {
+      // ignore
+    }
+  }
+
   useEffect(() => {
     loadAll();
+    loadSyncStatus();
   }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadSyncStatus();
+    }, 1500);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (syncJob?.status === "success") {
+      loadAll();
+    }
+  }, [syncJob?.status]);
 
   const filtered = useMemo(() => {
     const needle = q.toLowerCase().trim();
@@ -188,6 +266,29 @@ export default function ProductMatrixClient() {
       ...prev,
       [productId]: { material_id, qty },
     }));
+  }
+
+  async function syncProducts() {
+    try {
+      setSyncing(true);
+      setSyncMessage(null);
+      setSyncError(null);
+
+      const result = await j<SyncProductsResponse>("/api/salla/sync/products", {
+        method: "POST",
+      });
+
+      await loadSyncStatus();
+
+      setSyncMessage(
+        result.jobId
+          ? "بدأت مزامنة جميع المنتجات مع سلة"
+          : `تم تحديث المنتجات بنجاح${typeof result.productsUpserted === "number" ? ` (${result.productsUpserted})` : ""}`,
+      );
+    } catch (e: any) {
+      setSyncError(e?.message || "تعذر تحديث المنتجات من سلة");
+      setSyncing(false);
+    }
   }
 
   async function saveAll() {
@@ -343,80 +444,171 @@ export default function ProductMatrixClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold"> اعدادات المنتجات</h1>
-          <p className="text-sm text-muted-foreground">
-            تعديل جماعي سريع لإعدادات التشغيل لكل منتج.
-          </p>
+      <div className="rounded-3xl border bg-white p-5 shadow-sm">
+        <div className="space-y-4">
+          <div className="text-right">
+            <h1 className="text-xl font-semibold">إعدادات المنتجات</h1>
+            <p className="text-sm text-muted-foreground">
+              تعديل جماعي سريع لإعدادات التشغيل لكل منتج.
+            </p>
 
-          <div className="mt-2 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-            ✔️ علامة الصح تعني أن المنتج يمر على هذه المرحلة أثناء الإنتاج. 💰
-            الرقم تحتها هو أجر أو تكلفة تنفيذ هذه المرحلة لكل قطعة.
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="w-[260px]">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="بحث"
-            />
+            <div className="mt-2 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+              ✔️ علامة الصح تعني أن المنتج يمر على هذه المرحلة أثناء الإنتاج. 💰
+              الرقم تحتها هو أجر أو تكلفة تنفيذ هذه المرحلة لكل قطعة.
+            </div>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-2"
-            onClick={() => {
-              window.open("/api/products/matrix/export", "_blank");
-            }}
-          >
-            <Download className="h-4 w-4" />
-            تصدير Excel
-          </Button>
+          {syncMessage ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {syncMessage}
+            </div>
+          ) : null}
 
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              await handleImport(file);
-            }}
-          />
+          {syncError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {syncError}
+            </div>
+          ) : null}
 
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-2"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-          >
-            {uploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            رفع Excel
-          </Button>
+          <div className="rounded-3xl border bg-muted/20 p-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="flex-1 text-right">
+                  <div className="text-base font-bold">
+                    مزامنة جميع المنتجات مع سلة
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    هذا الزر يجلب ويحدّث جميع منتجات المتجر من سلة
+                  </div>
+                </div>
 
-          <Button
-            type="button"
-            className="gap-2"
-            onClick={saveAll}
-            disabled={saving || dirtyCount === 0}
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            حفظ
-          </Button>
+                <Button
+                  type="button"
+                  onClick={syncProducts}
+                  disabled={syncing}
+                  className="h-12 gap-2 rounded-2xl"
+                >
+                  {syncing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  مزامنة جميع المنتجات
+                </Button>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-right">
+                    <div className="text-base font-bold">حالة المزامنة</div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      {statusLabel(syncJob)}
+                    </div>
+                  </div>
+
+                  <RefreshCw className="h-5 w-5 text-muted-foreground" />
+                </div>
+
+                <div className="overflow-hidden rounded-full bg-muted h-3">
+                  <div
+                    className="h-3 rounded-full bg-primary transition-all duration-300"
+                    style={{ width: `${syncProgress}%` }}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+                  <div>
+                    التقدم:{" "}
+                    <span className="font-bold text-foreground">
+                      {syncProgress}%
+                    </span>
+                  </div>
+
+                  <div>
+                    تمت معالجة{" "}
+                    <span className="font-bold text-foreground">
+                      {Number(syncJob?.processed ?? 0).toLocaleString("ar-SA")}
+                    </span>{" "}
+                    من أصل{" "}
+                    <span className="font-bold text-foreground">
+                      {Number(syncJob?.total ?? 0).toLocaleString("ar-SA")}
+                    </span>
+                  </div>
+                </div>
+
+                {syncJob?.status === "failed" && syncJob?.last_error ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {syncJob.last_error}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="w-full xl:w-[260px]">
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="بحث"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  window.open("/api/products/matrix/export", "_blank");
+                }}
+              >
+                <Download className="h-4 w-4" />
+                تصدير Excel
+              </Button>
+
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  await handleImport(file);
+                }}
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                رفع Excel
+              </Button>
+
+              <Button
+                type="button"
+                className="gap-2"
+                onClick={saveAll}
+                disabled={saving || dirtyCount === 0}
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                حفظ
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -14,6 +14,8 @@ import {
   Workflow,
   Boxes,
   RefreshCw,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 
 type SallaProductRow = {
+  id?: string;
   salla_product_id: string;
   name: string | null;
   sku: string | null;
@@ -95,6 +98,38 @@ type SyncProductsResponse = {
   tenantId?: string;
   installationId?: string;
   productsUpserted?: number;
+  jobId?: string;
+  total?: number;
+  processed?: number;
+};
+
+type ProductsApiResponse = {
+  ok: boolean;
+  items: SallaProductRow[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+type SyncJob = {
+  id: string;
+  tenant_id: string;
+  installation_id: string;
+  job_type: string;
+  status: "running" | "success" | "failed" | "pending";
+  total: number | null;
+  processed: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  last_error: string | null;
+  trace: string | null;
+};
+
+type SyncStatusResponse = {
+  ok: boolean;
+  job: SyncJob | null;
+  progress: number;
 };
 
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
@@ -150,10 +185,23 @@ function SectionShell({
   );
 }
 
+function statusLabel(job: SyncJob | null) {
+  if (!job) return "لا توجد مزامنة حديثة";
+  if (job.status === "running") return "جاري مزامنة جميع المنتجات مع سلة";
+  if (job.status === "success") return "آخر مزامنة اكتملت بنجاح";
+  if (job.status === "failed") return "آخر مزامنة فشلت";
+  return "حالة غير معروفة";
+}
+
 export default function ProductsClient() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<SallaProductRow[]>([]);
   const [q, setQ] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<SallaProductRow | null>(null);
@@ -176,14 +224,20 @@ export default function ProductsClient() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
+  const [syncProgress, setSyncProgress] = useState(0);
 
-  async function loadBaseData() {
+  async function loadBaseData(nextPage = page, nextPageSize = pageSize) {
     setLoading(true);
     try {
-      const p = await j<{ ok: boolean; items: SallaProductRow[] }>(
-        "/api/products",
+      const p = await j<ProductsApiResponse>(
+        `/api/products?page=${nextPage}&limit=${nextPageSize}`,
       );
       setProducts(p.items || []);
+      setPage(p.page || nextPage);
+      setPageSize(p.limit || nextPageSize);
+      setTotal(p.total || 0);
+      setTotalPages(Math.max(1, p.totalPages || 1));
 
       const s = await j<{ ok: boolean; items: StageRow[] }>("/api/stages");
       setStages(
@@ -201,12 +255,21 @@ export default function ProductsClient() {
     }
   }
 
-  async function reloadProductsOnly(nextActiveId?: string | null) {
-    const p = await j<{ ok: boolean; items: SallaProductRow[] }>(
-      "/api/products",
+  async function reloadProductsOnly(
+    nextActiveId?: string | null,
+    nextPage = page,
+    nextPageSize = pageSize,
+  ) {
+    const p = await j<ProductsApiResponse>(
+      `/api/products?page=${nextPage}&limit=${nextPageSize}`,
     );
     const nextProducts = p.items || [];
+
     setProducts(nextProducts);
+    setPage(p.page || nextPage);
+    setPageSize(p.limit || nextPageSize);
+    setTotal(p.total || 0);
+    setTotalPages(Math.max(1, p.totalPages || 1));
 
     if (nextActiveId) {
       const found = nextProducts.find(
@@ -214,6 +277,15 @@ export default function ProductsClient() {
       );
       if (found) setActive(found);
     }
+  }
+
+  async function loadSyncStatus() {
+    try {
+      const res = await j<SyncStatusResponse>("/api/salla/sync/products/status");
+      setSyncJob(res.job || null);
+      setSyncProgress(res.progress || 0);
+      setSyncing(res.job?.status === "running");
+    } catch {}
   }
 
   async function reloadProductStages(productId: string) {
@@ -235,8 +307,30 @@ export default function ProductsClient() {
   }
 
   useEffect(() => {
-    loadBaseData();
+    loadBaseData(1, pageSize);
+    loadSyncStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    loadBaseData(page, pageSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadSyncStatus();
+    }, 1500);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (syncJob?.status === "success") {
+      reloadProductsOnly(active?.salla_product_id || null, page, pageSize);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncJob?.status]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -274,14 +368,15 @@ export default function ProductsClient() {
         method: "POST",
       });
 
-      await reloadProductsOnly(active?.salla_product_id || null);
+      await loadSyncStatus();
 
       setSyncMessage(
-        `تم تحديث المنتجات بنجاح${typeof result.productsUpserted === "number" ? ` (${result.productsUpserted})` : ""}`,
+        result.jobId
+          ? "بدأت مزامنة جميع المنتجات مع سلة"
+          : `تم تحديث المنتجات بنجاح${typeof result.productsUpserted === "number" ? ` (${result.productsUpserted})` : ""}`,
       );
     } catch (e: any) {
       setSyncError(e?.message || "تعذر تحديث المنتجات من سلة");
-    } finally {
       setSyncing(false);
     }
   }
@@ -446,17 +541,22 @@ export default function ProductsClient() {
     }
   }
 
+  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(page * pageSize, total);
+  const hasPrev = page > 1;
+  const hasNext = page < totalPages;
+
   return (
     <div dir="rtl" className="space-y-6">
-      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
-        <div className="flex flex-col gap-5 p-5 md:p-6 xl:flex-row xl:items-center xl:justify-between">
-          <div className="space-y-3 text-right">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+      <Card className="overflow-hidden rounded-[28px] border-border/70 shadow-sm">
+        <CardContent className="p-5 md:p-6">
+          <div className="space-y-4">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
               <Package className="h-3.5 w-3.5" />
               إدارة المنتجات وربط التشغيل
             </div>
 
-            <div>
+            <div className="text-right">
               <h1 className="text-2xl font-black tracking-tight md:text-3xl">
                 المنتجات
               </h1>
@@ -476,42 +576,124 @@ export default function ProductsClient() {
                 {syncError}
               </div>
             ) : null}
-          </div>
 
-          <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-center">
-            <div className="w-full xl:w-[320px]">
-              <div className="relative">
-                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="بحث بالاسم أو SKU"
-                  className="h-12 rounded-2xl border-border/70 pr-10"
-                />
+            <div className="rounded-3xl border border-border/70 bg-muted/20 p-4">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="flex-1 text-right">
+                    <div className="text-base font-bold">
+                      مزامنة جميع المنتجات مع سلة
+                    </div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      هذا الزر يجلب ويحدّث جميع منتجات المتجر من سلة
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={syncProducts}
+                    disabled={syncing}
+                    className="h-12 gap-2 rounded-2xl"
+                  >
+                    {syncing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    مزامنة جميع المنتجات
+                  </Button>
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-border/70 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-right">
+                      <div className="text-base font-bold">حالة المزامنة</div>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {statusLabel(syncJob)}
+                      </div>
+                    </div>
+
+                    <RefreshCw className="h-5 w-5 text-muted-foreground" />
+                  </div>
+
+                  <div className="overflow-hidden rounded-full bg-muted h-3">
+                    <div
+                      className="h-3 rounded-full bg-primary transition-all duration-300"
+                      style={{ width: `${syncProgress}%` }}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+                    <div>
+                      التقدم:{" "}
+                      <span className="font-bold text-foreground">
+                        {syncProgress}%
+                      </span>
+                    </div>
+
+                    <div>
+                      تمت معالجة{" "}
+                      <span className="font-bold text-foreground">
+                        {Number(syncJob?.processed ?? 0).toLocaleString("ar-SA")}
+                      </span>{" "}
+                      من أصل{" "}
+                      <span className="font-bold text-foreground">
+                        {Number(syncJob?.total ?? 0).toLocaleString("ar-SA")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {syncJob?.status === "failed" && syncJob?.last_error ? (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {syncJob.last_error}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
 
-            <Button
-              type="button"
-              onClick={syncProducts}
-              disabled={syncing}
-              className="h-12 gap-2 rounded-2xl"
-            >
-              {syncing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              تحديث المنتجات
-            </Button>
+            <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+              <div className="rounded-3xl border border-border/70 bg-white p-4">
+                <label className="mb-3 block text-right text-sm font-bold">
+                  عدد المنتجات في الصفحة
+                </label>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPage(1);
+                    setPageSize(Number(e.target.value));
+                  }}
+                  className="h-12 w-full rounded-2xl border border-border/70 bg-background px-3 text-sm outline-none"
+                >
+                  <option value={20}>عرض 20 منتج في الصفحة</option>
+                  <option value={50}>عرض 50 منتج في الصفحة</option>
+                  <option value={100}>عرض 100 منتج في الصفحة</option>
+                </select>
+              </div>
+
+              <div className="rounded-3xl border border-border/70 bg-white p-4">
+                <label className="mb-3 block text-right text-sm font-bold">
+                  البحث في المنتجات
+                </label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="بحث بالاسم أو SKU"
+                    className="h-12 rounded-2xl border-border/70 pr-10"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       <SectionShell
         icon={Package}
         title="قائمة المنتجات"
-        subtitle={`إجمالي النتائج: ${filtered.length}`}
+        subtitle={`عرض ${rangeStart}–${rangeEnd} من أصل ${total}`}
       >
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
@@ -587,6 +769,42 @@ export default function ProductsClient() {
             ))}
           </div>
         )}
+
+        <div className="mt-5 border-t border-border/60 pt-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-muted-foreground">
+              الصفحة {page} من {totalPages} — عدد المنتجات في الصفحة: {pageSize}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!hasPrev || loading}
+                className="rounded-xl"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronRight className="h-4 w-4" />
+                السابق
+              </Button>
+
+              <div className="inline-flex min-w-24 items-center justify-center rounded-xl border border-border/70 px-3 py-2 text-sm font-medium">
+                {page} / {totalPages}
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!hasNext || loading}
+                className="rounded-xl"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                التالي
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
       </SectionShell>
 
       <Dialog open={open} onOpenChange={(v) => setOpen(v)}>
