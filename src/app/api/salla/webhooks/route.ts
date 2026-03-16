@@ -34,7 +34,6 @@ function toExpiresAt(expires: any) {
  * 1) store/info
  * 2) fallback: accounts.salla.sa/oauth2/user/info
  */
-
 async function getBestEmailFromSalla(accessToken: string) {
   // A) accounts user/info أولاً لأنه يعطي إيميل صاحب الحساب الحقيقي
   const userInfoUrl = "https://accounts.salla.sa/oauth2/user/info";
