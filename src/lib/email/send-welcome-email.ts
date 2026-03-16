@@ -1,6 +1,6 @@
 export async function sendWelcomeEmail(email: string) {
   const apiKey = process.env.RESEND_API_KEY;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const appUrl = process.env.APP_URL;
 
   if (!apiKey) {
     console.error("Missing RESEND_API_KEY");
