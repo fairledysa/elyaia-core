@@ -112,7 +112,7 @@ async function getOrCreateUserByEmail(
   sb: any,
   email: string,
   fullName: string | null,
-) {
+): Promise<{ user: any; isNewUser: boolean }> {
   const emailLower = email.trim().toLowerCase();
 
   const listed = await sb.auth.admin.listUsers({
@@ -124,7 +124,9 @@ async function getOrCreateUserByEmail(
   const existingUser = (listed.data?.users || []).find(
     (u: any) => String(u.email || "").toLowerCase() === emailLower,
   );
-  if (existingUser) return existingUser;
+  if (existingUser) {
+    return { user: existingUser, isNewUser: false };
+  }
 
   const created = await sb.auth.admin.createUser({
     email: emailLower,
@@ -132,7 +134,8 @@ async function getOrCreateUserByEmail(
     user_metadata: fullName ? { full_name: fullName } : undefined,
   });
   if (created.error) throw created.error;
-  return created.data.user;
+
+  return { user: created.data.user, isNewUser: true };
 }
 
 export async function POST(req: NextRequest) {
@@ -363,7 +366,7 @@ export async function POST(req: NextRequest) {
     if (updInst.error) throw updInst.error;
 
     // E) create/find user (NO invite)
-    const user = await getOrCreateUserByEmail(sb, email, name);
+    const { user, isNewUser } = await getOrCreateUserByEmail(sb, email, name);
     const userId = user.id;
 
     // F) upsert profile (non-blocking)
@@ -407,11 +410,13 @@ export async function POST(req: NextRequest) {
       if (evUpd.error) throw evUpd.error;
     }
 
-    // I) send welcome email بعد نجاح كل شيء
-    try {
-      await sendWelcomeEmail(email);
-    } catch (emailError) {
-      console.error("[salla:webhook] welcome email failed", emailError);
+    // I) send welcome email فقط إذا المستخدم جديد
+    if (isNewUser) {
+      try {
+        await sendWelcomeEmail(email);
+      } catch (emailError) {
+        console.error("[salla:webhook] welcome email failed", emailError);
+      }
     }
 
     return NextResponse.json({
@@ -420,7 +425,9 @@ export async function POST(req: NextRequest) {
       tenantId,
       installationId,
       email,
-      note: "linked_owner_with_welcome_email",
+      note: isNewUser
+        ? "linked_owner_with_welcome_email"
+        : "linked_owner_existing_user",
     });
   } catch (e: any) {
     console.error("[salla:webhook] error", e);
