@@ -104,17 +104,16 @@ async function getOrCreateUserByEmail(
 ) {
   const emailLower = email.trim().toLowerCase();
 
-  // Fast path: getUserByEmail (no pagination, no rate limit)
-  const got = await sb.auth.admin.getUserByEmail(emailLower);
-  if (got?.data?.user) return got.data.user;
-  if (
-    got?.error &&
-    got.error.message &&
-    !got.error.message.includes("User not found")
-  ) {
-    // some SDKs return error on not-found; don't fail unless it's not the "not found" case
-    // proceed to create
-  }
+  const listed = await sb.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+  if (listed.error) throw listed.error;
+
+  const existingUser = (listed.data?.users || []).find(
+    (u: any) => String(u.email || "").toLowerCase() === emailLower,
+  );
+  if (existingUser) return existingUser;
 
   const created = await sb.auth.admin.createUser({
     email: emailLower,
