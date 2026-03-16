@@ -1,7 +1,7 @@
 // FILE: src/app/api/salla/webhooks/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { sendWelcomeEmail } from "@/lib/email/send-welcome-email";
+
 export const runtime = "nodejs";
 
 type SallaWebhookBody = {
@@ -354,12 +354,6 @@ export async function POST(req: NextRequest) {
 
     // E) create/find user (NO invite)
     const user = await getOrCreateUserByEmail(sb, email, name);
-
-try {
-  await sendWelcomeEmail(email);
-} catch (emailError) {
-  console.error("[salla:webhook] welcome email failed", emailError);
-}
     const userId = user.id;
 
     // F) upsert profile (non-blocking)
