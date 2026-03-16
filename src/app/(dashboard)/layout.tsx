@@ -11,6 +11,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
+import OnboardingPath from "@/components/onboarding/onboarding-path";
+
 import { requireUser } from "@/lib/auth/requireUser";
 import { requireTenant } from "@/lib/tenant/requireTenant";
 
@@ -43,7 +45,6 @@ export default async function DashboardLayout({
 
               <Separator orientation="vertical" className="mx-2 h-4 shrink-0" />
 
-              {/* LOGO + PROJECT NAME */}
               <div className="flex items-center gap-2">
                 <Image
                   src="/logo.png"
@@ -73,7 +74,10 @@ export default async function DashboardLayout({
             </div>
           </header>
 
-          <main className="min-w-0 flex flex-1 flex-col gap-4 p-4">
+          <main className="min-w-0 flex flex-1 flex-col gap-6 p-4">
+            {/* شريط مسار الانطلاقة */}
+            <OnboardingPath />
+
             {children}
           </main>
 

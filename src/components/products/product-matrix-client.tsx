@@ -618,7 +618,7 @@ export default function ProductMatrixClient() {
             <tr className="border-b bg-muted/40">
               <th className="p-3 text-right">المنتج</th>
               <th className="p-3 text-center">القماش</th>
-              <th className="p-3 text-center">كم/قطعة</th>
+              <th className="p-3 text-center">كم/متر</th>
 
               {stages.map((s) => (
                 <th key={s.id} className="p-3 text-center">

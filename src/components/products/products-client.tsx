@@ -1029,7 +1029,7 @@ export default function ProductsClient() {
                                 }
                                 disabled={hasMaterialLinked}
                               >
-                                <option value="">اختر مادة</option>
+                                <option value="">اختر القماش</option>
                                 {materials.map((m) => (
                                   <option key={m.id} value={m.id}>
                                     {m.name}
