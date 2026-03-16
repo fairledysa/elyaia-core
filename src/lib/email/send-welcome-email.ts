@@ -23,7 +23,7 @@ export async function sendWelcomeEmail(email: string) {
       },
       body: JSON.stringify({
         from: "Elyaia Production <no-reply@elyaia.com>",
-        to: email,
+        to: [email],
         subject: "تم ربط متجرك مع نظام إدارة الإنتاج",
         html: `
 <!DOCTYPE html>
@@ -31,6 +31,7 @@ export async function sendWelcomeEmail(email: string) {
 <head>
 <meta charset="UTF-8">
 </head>
+
 <body style="margin:0;padding:0;background:#f5f7fa;font-family:Arial,Helvetica,sans-serif">
 
 <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0">
@@ -105,8 +106,10 @@ Elyaia Production System
       }),
     });
 
+    const text = await res.text();
+    console.log("RESEND RESPONSE:", res.status, text);
+
     if (!res.ok) {
-      const text = await res.text();
       console.error("Welcome email failed:", text);
     }
   } catch (err) {

@@ -354,7 +354,12 @@ export async function POST(req: NextRequest) {
 
     // E) create/find user (NO invite)
     const user = await getOrCreateUserByEmail(sb, email, name);
-    await sendWelcomeEmail(email);
+
+try {
+  await sendWelcomeEmail(email);
+} catch (emailError) {
+  console.error("[salla:webhook] welcome email failed", emailError);
+}
     const userId = user.id;
 
     // F) upsert profile (non-blocking)
