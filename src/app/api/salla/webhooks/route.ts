@@ -34,13 +34,13 @@ function toExpiresAt(expires: any) {
  * 2) fallback: accounts.salla.sa/oauth2/user/info
  */
 async function getBestEmailFromSalla(accessToken: string) {
-  // A) store/info
   const storeInfoUrl = "https://api.salla.dev/admin/v2/store/info";
   const r1 = await fetch(storeInfoUrl, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     },
+    cache: "no-store",
   });
 
   const t1 = await r1.text();
@@ -61,17 +61,18 @@ async function getBestEmailFromSalla(accessToken: string) {
       j1?.store?.name ??
       null;
 
-    if (email)
+    if (email) {
       return { email: String(email), name: name ? String(name) : null };
+    }
   }
 
-  // B) accounts user/info
   const userInfoUrl = "https://accounts.salla.sa/oauth2/user/info";
   const r2 = await fetch(userInfoUrl, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     },
+    cache: "no-store",
   });
 
   const t2 = await r2.text();
@@ -81,17 +82,18 @@ async function getBestEmailFromSalla(accessToken: string) {
   const email = j2?.data?.email ?? null;
   const name = j2?.data?.name ?? null;
 
-  if (!email)
+  if (!email) {
     throw new Error("Could not read email from Salla user/info response");
+  }
+
   return { email: String(email), name: name ? String(name) : null };
 }
 
 function normalizeScopes(scope: any): string[] | null {
   if (!scope) return null;
   if (Array.isArray(scope)) return scope.map(String).filter(Boolean);
-  const s = String(scope);
-  // sometimes comma-separated / space-separated
-  return s
+
+  return String(scope)
     .split(/[ ,]+/g)
     .map((x) => x.trim())
     .filter(Boolean);
@@ -104,10 +106,7 @@ async function getOrCreateUserByEmail(
 ) {
   const emailLower = email.trim().toLowerCase();
 
-  const listed = await sb.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  });
+  const listed = await sb.auth.admin.listUsers();
   if (listed.error) throw listed.error;
 
   const existingUser = (listed.data?.users || []).find(
@@ -120,6 +119,7 @@ async function getOrCreateUserByEmail(
     email_confirm: true,
     user_metadata: fullName ? { full_name: fullName } : undefined,
   });
+
   if (created.error) throw created.error;
   return created.data.user;
 }
@@ -127,9 +127,9 @@ async function getOrCreateUserByEmail(
 export async function POST(req: NextRequest) {
   const sb = createSupabaseAdminClient();
 
-  // 1) verify webhook token
   const sentAuth = getHeader(req, "authorization");
   const expected = mustEnv("SALLA_WEBHOOK_SECRET");
+
   if (sentAuth !== expected) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized webhook" },
@@ -141,10 +141,10 @@ export async function POST(req: NextRequest) {
   let webhookEventId: string | null = null;
 
   try {
-    // 2) body
     const body = (await req.json()) as SallaWebhookBody;
 
-    // 3) only handle needed events
+    console.log("[salla:webhook] event:", body.event, "merchant:", body.merchant);
+
     if (
       body.event !== "app.store.authorize" &&
       body.event !== "app.uninstalled"
@@ -154,7 +154,6 @@ export async function POST(req: NextRequest) {
 
     const merchantId = body.merchant ? String(body.merchant) : null;
 
-    // Try find installation early (for webhook_events logging)
     if (merchantId) {
       const inst = await sb
         .from("salla_installations")
@@ -165,7 +164,6 @@ export async function POST(req: NextRequest) {
       installationIdForEvent = inst.data?.id ?? null;
     }
 
-    // Create webhook_events row if we have installation_id
     if (installationIdForEvent) {
       const evIns = await sb
         .from("webhook_events")
@@ -182,7 +180,6 @@ export async function POST(req: NextRequest) {
       webhookEventId = evIns.data.id as string;
     }
 
-    // 4) uninstall
     if (body.event === "app.uninstalled") {
       if (merchantId) {
         const upd = await sb
@@ -209,7 +206,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // 5) authorize
     const accessToken = body.data?.access_token;
     const refreshToken = body.data?.refresh_token;
     const expires = body.data?.expires;
@@ -222,7 +218,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // A) get/create installation + tenant
     const instExisting = await sb
       .from("salla_installations")
       .select("id, tenant_id, merchant_id, store_name, status")
@@ -236,6 +231,7 @@ export async function POST(req: NextRequest) {
     if (instExisting.data) {
       tenantId = instExisting.data.tenant_id;
       installationId = instExisting.data.id;
+      console.log("[salla:webhook] existing installation:", installationId);
     } else {
       const tenantName = `Store ${merchantId}`;
 
@@ -260,9 +256,11 @@ export async function POST(req: NextRequest) {
         .single();
       if (instIns.error) throw instIns.error;
       installationId = instIns.data.id as string;
+
+      console.log("[salla:webhook] created tenant:", tenantId);
+      console.log("[salla:webhook] created installation:", installationId);
     }
 
-    // If we didn't log webhook_events earlier, log now (after creating installation)
     if (!webhookEventId) {
       const evIns = await sb
         .from("webhook_events")
@@ -279,7 +277,6 @@ export async function POST(req: NextRequest) {
       webhookEventId = evIns.data.id as string;
     }
 
-    // B) upsert tokens
     const tokUp = await sb.from("salla_tokens").upsert(
       {
         installation_id: installationId,
@@ -293,7 +290,8 @@ export async function POST(req: NextRequest) {
     );
     if (tokUp.error) throw tokUp.error;
 
-    // C) if owner already linked, stop here (no email/user creation)
+    console.log("[salla:webhook] token saved for installation:", installationId);
+
     const owner = await sb
       .from("tenant_members")
       .select("user_id")
@@ -334,12 +332,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // D) first-time: fetch email + store name
     const storeUser = await getBestEmailFromSalla(String(accessToken));
     const email = storeUser.email.trim().toLowerCase();
     const name = storeUser.name ?? null;
 
-    // Update installation with owner_email/store_name
+    console.log("[salla:webhook] merchant email:", email);
+
     const updInst = await sb
       .from("salla_installations")
       .update({
@@ -351,11 +349,11 @@ export async function POST(req: NextRequest) {
       .eq("id", installationId);
     if (updInst.error) throw updInst.error;
 
-    // E) create/find user (NO invite)
     const user = await getOrCreateUserByEmail(sb, email, name);
     const userId = user.id;
 
-    // F) upsert profile (non-blocking)
+    console.log("[salla:webhook] owner user:", userId);
+
     const profUp = await sb.from("profiles").upsert(
       {
         id: userId,
@@ -372,7 +370,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // G) link tenant membership (owner) - idempotent
     const tmUp = await sb.from("tenant_members").upsert(
       {
         tenant_id: tenantId,
@@ -384,7 +381,6 @@ export async function POST(req: NextRequest) {
     );
     if (tmUp.error) throw tmUp.error;
 
-    // H) mark webhook_events processed
     if (webhookEventId) {
       const evUpd = await sb
         .from("webhook_events")
@@ -407,7 +403,6 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error("[salla:webhook] error", e);
 
-    // best-effort: mark webhook_events failed
     if (webhookEventId) {
       try {
         await sb
