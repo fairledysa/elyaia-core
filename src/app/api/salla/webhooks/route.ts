@@ -1,6 +1,7 @@
 // FILE: src/app/api/salla/webhooks/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sendWelcomeEmail } from "@/lib/email/send-welcome-email";
 
 export const runtime = "nodejs";
 
@@ -33,10 +34,11 @@ function toExpiresAt(expires: any) {
  * 1) store/info
  * 2) fallback: accounts.salla.sa/oauth2/user/info
  */
+
 async function getBestEmailFromSalla(accessToken: string) {
-  // A) store/info
-  const storeInfoUrl = "https://api.salla.dev/admin/v2/store/info";
-  const r1 = await fetch(storeInfoUrl, {
+  // A) accounts user/info أولاً لأنه يعطي إيميل صاحب الحساب الحقيقي
+  const userInfoUrl = "https://accounts.salla.sa/oauth2/user/info";
+  const r1 = await fetch(userInfoUrl, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
@@ -46,28 +48,19 @@ async function getBestEmailFromSalla(accessToken: string) {
   const t1 = await r1.text();
   if (r1.ok) {
     const j1 = JSON.parse(t1);
-    const email =
-      j1?.data?.email ??
-      j1?.data?.store?.email ??
-      j1?.email ??
-      j1?.store?.email ??
-      null;
 
-    const name =
-      j1?.data?.name ??
-      j1?.data?.store_name ??
-      j1?.data?.store?.name ??
-      j1?.name ??
-      j1?.store?.name ??
-      null;
+    const email = j1?.data?.email ?? j1?.email ?? null;
 
-    if (email)
+    const name = j1?.data?.name ?? j1?.name ?? null;
+
+    if (email) {
       return { email: String(email), name: name ? String(name) : null };
+    }
   }
 
-  // B) accounts user/info
-  const userInfoUrl = "https://accounts.salla.sa/oauth2/user/info";
-  const r2 = await fetch(userInfoUrl, {
+  // B) fallback: store/info
+  const storeInfoUrl = "https://api.salla.dev/admin/v2/store/info";
+  const r2 = await fetch(storeInfoUrl, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
@@ -75,14 +68,33 @@ async function getBestEmailFromSalla(accessToken: string) {
   });
 
   const t2 = await r2.text();
-  if (!r2.ok) throw new Error(`Salla user info failed: ${r2.status} ${t2}`);
+  if (!r2.ok) {
+    throw new Error(
+      `Salla user info failed: accounts=${r1.status} ${t1} | store=${r2.status} ${t2}`,
+    );
+  }
 
   const j2 = JSON.parse(t2);
-  const email = j2?.data?.email ?? null;
-  const name = j2?.data?.name ?? null;
 
-  if (!email)
-    throw new Error("Could not read email from Salla user/info response");
+  const email =
+    j2?.data?.email ??
+    j2?.data?.store?.email ??
+    j2?.email ??
+    j2?.store?.email ??
+    null;
+
+  const name =
+    j2?.data?.name ??
+    j2?.data?.store_name ??
+    j2?.data?.store?.name ??
+    j2?.name ??
+    j2?.store?.name ??
+    null;
+
+  if (!email) {
+    throw new Error("Could not read email from Salla response");
+  }
+
   return { email: String(email), name: name ? String(name) : null };
 }
 
@@ -396,13 +408,20 @@ export async function POST(req: NextRequest) {
       if (evUpd.error) throw evUpd.error;
     }
 
+    // I) send welcome email بعد نجاح كل شيء
+    try {
+      await sendWelcomeEmail(email);
+    } catch (emailError) {
+      console.error("[salla:webhook] welcome email failed", emailError);
+    }
+
     return NextResponse.json({
       ok: true,
       merchantId,
       tenantId,
       installationId,
       email,
-      note: "linked_owner_without_invite_email",
+      note: "linked_owner_with_welcome_email",
     });
   } catch (e: any) {
     console.error("[salla:webhook] error", e);
