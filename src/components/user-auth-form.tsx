@@ -17,7 +17,7 @@ import {
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 const OTP_LENGTH = 6;
-const OTP_EXPIRY_SECONDS = 300;
+const OTP_EXPIRY_SECONDS = 60;
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();

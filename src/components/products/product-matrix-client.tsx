@@ -78,6 +78,15 @@ type SyncStatusResponse = {
   progress: number;
 };
 
+type ImportResponse = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  imported?: number;
+  updated?: number;
+  total?: number;
+};
+
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, cache: "no-store" });
   const txt = await res.text();
@@ -95,6 +104,20 @@ function statusLabel(job: SyncJob | null) {
   if (job.status === "success") return "آخر مزامنة اكتملت بنجاح";
   if (job.status === "failed") return "آخر مزامنة فشلت";
   return "حالة غير معروفة";
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
 export default function ProductMatrixClient() {
@@ -124,6 +147,16 @@ export default function ProductMatrixClient() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
   const [syncProgress, setSyncProgress] = useState(0);
+
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importStage, setImportStage] = useState<
+    "idle" | "uploading" | "processing" | "success" | "failed"
+  >("idle");
+  const [importProgress, setImportProgress] = useState(0);
+  const [importLoadedBytes, setImportLoadedBytes] = useState(0);
+  const [importTotalBytes, setImportTotalBytes] = useState(0);
+  const [importFileName, setImportFileName] = useState<string | null>(null);
 
   const dirtyCount = useMemo(() => {
     return (
@@ -400,33 +433,84 @@ export default function ProductMatrixClient() {
     }
   }
 
-  async function handleImport(file: File) {
-    setUploading(true);
-    try {
+  function uploadImportWithProgress(file: File): Promise<ImportResponse> {
+    return new Promise((resolve, reject) => {
       const fd = new FormData();
       fd.append("file", file);
 
-      const res = await fetch("/api/products/matrix/import", {
-        method: "POST",
-        body: fd,
-      });
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/products/matrix/import");
 
-      const txt = await res.text();
-      let data: any = null;
-      try {
-        data = JSON.parse(txt);
-      } catch {
-        data = null;
-      }
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
 
-      if (!res.ok) {
-        throw new Error(data?.error || txt || "فشل رفع الملف");
-      }
+        const loaded = event.loaded || 0;
+        const total = event.total || 0;
+        const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
+
+        setImportStage("uploading");
+        setImportLoadedBytes(loaded);
+        setImportTotalBytes(total);
+        setImportProgress(progress);
+      };
+
+      xhr.onload = () => {
+        const text = xhr.responseText || "";
+        let data: ImportResponse | null = null;
+
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = null;
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data || { ok: true });
+          return;
+        }
+
+        reject(
+          new Error(data?.error || text || "فشل رفع ملف الإكسل"),
+        );
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("تعذر رفع الملف، تحقق من الاتصال ثم حاول مرة أخرى"));
+      };
+
+      xhr.send(fd);
+    });
+  }
+
+  async function handleImport(file: File) {
+    setUploading(true);
+    setImportError(null);
+    setImportMessage(null);
+    setImportStage("uploading");
+    setImportProgress(0);
+    setImportLoadedBytes(0);
+    setImportTotalBytes(file.size || 0);
+    setImportFileName(file.name);
+
+    try {
+      const data = await uploadImportWithProgress(file);
+
+      setImportStage("processing");
+      setImportProgress(100);
+      setImportLoadedBytes(file.size || 0);
+      setImportTotalBytes(file.size || 0);
 
       await loadAll();
-      alert("تم رفع ملف الإكسل وتحديث البيانات");
+
+      setImportStage("success");
+      setImportMessage(
+        data?.total != null
+          ? `تم رفع الملف وتحديث ${Number(data.total).toLocaleString("ar-SA")} منتج`
+          : "تم رفع ملف الإكسل وتحديث البيانات",
+      );
     } catch (err: any) {
-      alert(err?.message || "فشل رفع ملف الإكسل");
+      setImportStage("failed");
+      setImportError(err?.message || "فشل رفع ملف الإكسل");
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -469,6 +553,88 @@ export default function ProductMatrixClient() {
               {syncError}
             </div>
           ) : null}
+
+          {(uploading || importMessage || importError || importStage === "success") && (
+            <div className="rounded-3xl border bg-muted/20 p-4">
+              <div className="space-y-3 rounded-2xl border bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-right">
+                    <div className="text-base font-bold">رفع ملف الإكسل</div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      {importFileName ? `الملف: ${importFileName}` : "اختر ملف الإكسل لبدء الرفع"}
+                    </div>
+                  </div>
+
+                  {uploading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Upload className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </div>
+
+                <div className="overflow-hidden rounded-full bg-muted h-3">
+                  <div
+                    className={`h-3 rounded-full transition-all duration-300 ${
+                      importStage === "failed"
+                        ? "bg-red-500"
+                        : importStage === "success"
+                          ? "bg-emerald-500"
+                          : "bg-primary"
+                    }`}
+                    style={{ width: `${importProgress}%` }}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+                  <div>
+                    الحالة:{" "}
+                    <span className="font-bold text-foreground">
+                      {importStage === "uploading" && "جاري رفع الملف..."}
+                      {importStage === "processing" && "تم رفع الملف، جاري معالجة المنتجات..."}
+                      {importStage === "success" && "اكتمل رفع الملف بنجاح"}
+                      {importStage === "failed" && "فشل رفع الملف"}
+                      {importStage === "idle" && "جاهز للرفع"}
+                    </span>
+                  </div>
+
+                  <div>
+                    التقدم:{" "}
+                    <span className="font-bold text-foreground">
+                      {importProgress}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+                  <div>
+                    المرفوع الآن:{" "}
+                    <span className="font-bold text-foreground">
+                      {formatBytes(importLoadedBytes)}
+                    </span>
+                  </div>
+
+                  <div>
+                    حجم الملف:{" "}
+                    <span className="font-bold text-foreground">
+                      {formatBytes(importTotalBytes)}
+                    </span>
+                  </div>
+                </div>
+
+                {importMessage ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                    {importMessage}
+                  </div>
+                ) : null}
+
+                {importError ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {importError}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
 
           <div className="rounded-3xl border bg-muted/20 p-4">
             <div className="flex flex-col gap-4">
