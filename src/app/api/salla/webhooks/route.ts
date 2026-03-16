@@ -1,6 +1,7 @@
 // FILE: src/app/api/salla/webhooks/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sendWelcomeEmail } from "@/lib/email/send-welcome-email";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ function toExpiresAt(expires: any) {
  * 1) store/info
  * 2) fallback: accounts.salla.sa/oauth2/user/info
  */
- 
+
 async function getBestEmailFromSalla(accessToken: string) {
   // A) accounts user/info أولاً لأنه يعطي إيميل صاحب الحساب الحقيقي
   const userInfoUrl = "https://accounts.salla.sa/oauth2/user/info";
@@ -48,15 +49,9 @@ async function getBestEmailFromSalla(accessToken: string) {
   if (r1.ok) {
     const j1 = JSON.parse(t1);
 
-    const email =
-      j1?.data?.email ??
-      j1?.email ??
-      null;
+    const email = j1?.data?.email ?? j1?.email ?? null;
 
-    const name =
-      j1?.data?.name ??
-      j1?.name ??
-      null;
+    const name = j1?.data?.name ?? j1?.name ?? null;
 
     if (email) {
       return { email: String(email), name: name ? String(name) : null };
@@ -102,6 +97,7 @@ async function getBestEmailFromSalla(accessToken: string) {
 
   return { email: String(email), name: name ? String(name) : null };
 }
+
 function normalizeScopes(scope: any): string[] | null {
   if (!scope) return null;
   if (Array.isArray(scope)) return scope.map(String).filter(Boolean);
@@ -370,6 +366,12 @@ export async function POST(req: NextRequest) {
     // E) create/find user (NO invite)
     const user = await getOrCreateUserByEmail(sb, email, name);
     const userId = user.id;
+
+    try {
+      await sendWelcomeEmail(email);
+    } catch (emailError) {
+      console.error("[salla:webhook] welcome email failed", emailError);
+    }
 
     // F) upsert profile (non-blocking)
     const profUp = await sb.from("profiles").upsert(
