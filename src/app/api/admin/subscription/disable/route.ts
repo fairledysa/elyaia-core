@@ -1,0 +1,79 @@
+// FILE: src/app/api/admin/subscription/disable/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = await createSupabaseServerClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.redirect(new URL("/admin/login", req.url));
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("is_super_admin")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError || !profile?.is_super_admin) {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+
+    const formData = await req.formData();
+    const tenantId = String(formData.get("tenant_id") || "").trim();
+
+    if (!tenantId) {
+      return NextResponse.redirect(
+        new URL("/admin/dashboard?error=missing_tenant_id", req.url),
+      );
+    }
+
+    const admin = createSupabaseAdminClient();
+
+    const { data: installation, error: installationError } = await admin
+      .from("salla_installations")
+      .select("id, merchant_id")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (installationError) {
+      throw installationError;
+    }
+
+    const payload: Record<string, any> = {
+      tenant_id: tenantId,
+      status: "expired",
+      last_event: "admin.subscription.disable",
+      updated_at: new Date().toISOString(),
+    };
+
+    if (installation?.id) payload.installation_id = installation.id;
+    if (installation?.merchant_id) payload.merchant_id = installation.merchant_id;
+
+    const { error: subError } = await admin
+      .from("app_subscriptions")
+      .upsert(payload, { onConflict: "tenant_id" });
+
+    if (subError) {
+      throw subError;
+    }
+
+    return NextResponse.redirect(
+      new URL("/admin/dashboard?success=subscription_disabled", req.url),
+    );
+  } catch (error) {
+    console.error("[admin/subscription/disable] error", error);
+    return NextResponse.redirect(
+      new URL("/admin/dashboard?error=subscription_disable_failed", req.url),
+    );
+  }
+}
