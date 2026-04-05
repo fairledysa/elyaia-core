@@ -30,12 +30,34 @@ function toExpiresAt(expires: any) {
   return new Date(n * 1000).toISOString();
 }
 
+function toIsoDate(value: any) {
+  if (!value) return null;
+
+  if (typeof value === "number") {
+    const ms = value > 9999999999 ? value : value * 1000;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function normalizeScopes(scope: any): string[] | null {
+  if (!scope) return null;
+  if (Array.isArray(scope)) return scope.map(String).filter(Boolean);
+  const s = String(scope);
+  return s
+    .split(/[ ,]+/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
 /**
- * 1) store/info
- * 2) fallback: accounts.salla.sa/oauth2/user/info
+ * 1) accounts user/info
+ * 2) fallback: store/info
  */
 async function getBestEmailFromSalla(accessToken: string) {
-  // A) accounts user/info أولاً لأنه يعطي إيميل صاحب الحساب الحقيقي
   const userInfoUrl = "https://accounts.salla.sa/oauth2/user/info";
   const r1 = await fetch(userInfoUrl, {
     headers: {
@@ -49,7 +71,6 @@ async function getBestEmailFromSalla(accessToken: string) {
     const j1 = JSON.parse(t1);
 
     const email = j1?.data?.email ?? j1?.email ?? null;
-
     const name = j1?.data?.name ?? j1?.name ?? null;
 
     if (email) {
@@ -57,7 +78,6 @@ async function getBestEmailFromSalla(accessToken: string) {
     }
   }
 
-  // B) fallback: store/info
   const storeInfoUrl = "https://api.salla.dev/admin/v2/store/info";
   const r2 = await fetch(storeInfoUrl, {
     headers: {
@@ -97,17 +117,6 @@ async function getBestEmailFromSalla(accessToken: string) {
   return { email: String(email), name: name ? String(name) : null };
 }
 
-function normalizeScopes(scope: any): string[] | null {
-  if (!scope) return null;
-  if (Array.isArray(scope)) return scope.map(String).filter(Boolean);
-  const s = String(scope);
-  // sometimes comma-separated / space-separated
-  return s
-    .split(/[ ,]+/g)
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
 async function getOrCreateUserByEmail(
   sb: any,
   email: string,
@@ -138,10 +147,117 @@ async function getOrCreateUserByEmail(
   return { user: created.data.user, isNewUser: true };
 }
 
+function isSubscriptionEvent(event: string) {
+  return [
+    "app.subscription.started",
+    "app.subscription.renewed",
+    "app.subscription.expired",
+    "app.subscription.canceled",
+    "app.trial.started",
+    "app.trial.expired",
+  ].includes(event);
+}
+
+async function upsertSubscriptionFromEvent(params: {
+  sb: any;
+  tenantId: string;
+  installationId: string;
+  merchantId: string;
+  body: SallaWebhookBody;
+}) {
+  const { sb, tenantId, installationId, merchantId, body } = params;
+
+  const event = body.event;
+  const data = body.data ?? {};
+  const createdAt = toIsoDate(body.created_at) ?? new Date().toISOString();
+
+  const subscriptionId =
+    data?.subscription_id != null ? String(data.subscription_id) : null;
+
+  const planName =
+    data?.plan_name ??
+    data?.plan?.name ??
+    data?.package_name ??
+    data?.subscription?.plan_name ??
+    null;
+
+  const startedAt =
+    toIsoDate(data?.started_at) ??
+    toIsoDate(data?.start_date) ??
+    (event === "app.subscription.started" ? createdAt : null);
+
+  const renewedAt =
+    toIsoDate(data?.renewed_at) ??
+    toIsoDate(data?.renewal_date) ??
+    (event === "app.subscription.renewed" ? createdAt : null);
+
+  const expiresAt =
+    toIsoDate(data?.expires_at) ??
+    toIsoDate(data?.expiry_date) ??
+    toIsoDate(data?.ends_at) ??
+    toIsoDate(data?.end_date);
+
+  const trialStartedAt =
+    toIsoDate(data?.trial_started_at) ??
+    toIsoDate(data?.trial_start_date) ??
+    (event === "app.trial.started" ? createdAt : null);
+
+  const trialEndsAt =
+    toIsoDate(data?.trial_ends_at) ??
+    toIsoDate(data?.trial_end_date) ??
+    toIsoDate(data?.trial_expires_at);
+
+  const canceledAt =
+    toIsoDate(data?.canceled_at) ??
+    toIsoDate(data?.cancelled_at) ??
+    (event === "app.subscription.canceled" ? createdAt : null);
+
+  let status: string = "inactive";
+
+  if (
+    event === "app.subscription.started" ||
+    event === "app.subscription.renewed"
+  ) {
+    status = "active";
+  } else if (event === "app.subscription.expired") {
+    status = "expired";
+  } else if (event === "app.subscription.canceled") {
+    status = "canceled";
+  } else if (event === "app.trial.started") {
+    status = "trialing";
+  } else if (event === "app.trial.expired") {
+    status = "expired";
+  }
+
+  const payload: Record<string, any> = {
+    tenant_id: tenantId,
+    installation_id: installationId,
+    merchant_id: merchantId,
+    subscription_id: subscriptionId,
+    status,
+    plan_name: planName,
+    last_event: event,
+    raw: body as any,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (startedAt) payload.started_at = startedAt;
+  if (renewedAt) payload.renewed_at = renewedAt;
+  if (expiresAt) payload.expires_at = expiresAt;
+  if (trialStartedAt) payload.trial_started_at = trialStartedAt;
+  if (trialEndsAt) payload.trial_ends_at = trialEndsAt;
+  if (canceledAt) payload.canceled_at = canceledAt;
+
+  const subUp = await sb
+    .from("app_subscriptions")
+    .upsert(payload, { onConflict: "tenant_id" });
+
+  if (subUp.error) throw subUp.error;
+}
+
 export async function POST(req: NextRequest) {
   const sb = createSupabaseAdminClient();
 
-  // 1) verify webhook token
   const sentAuth = getHeader(req, "authorization");
   const expected = mustEnv("SALLA_WEBHOOK_SECRET");
   if (sentAuth !== expected) {
@@ -155,58 +271,91 @@ export async function POST(req: NextRequest) {
   let webhookEventId: string | null = null;
 
   try {
-    // 2) body
     const body = (await req.json()) as SallaWebhookBody;
+    const event = String(body.event || "");
+    const merchantId = body.merchant ? String(body.merchant) : null;
 
-    // 3) only handle needed events
-    if (
-      body.event !== "app.store.authorize" &&
-      body.event !== "app.uninstalled"
-    ) {
+    const allowedEvents = [
+      "app.store.authorize",
+      "app.uninstalled",
+      "app.subscription.started",
+      "app.subscription.renewed",
+      "app.subscription.expired",
+      "app.subscription.canceled",
+      "app.trial.started",
+      "app.trial.expired",
+    ];
+
+    if (!allowedEvents.includes(event)) {
       return NextResponse.json({ ok: true });
     }
 
-    const merchantId = body.merchant ? String(body.merchant) : null;
-
-    // Try find installation early (for webhook_events logging)
     if (merchantId) {
       const inst = await sb
         .from("salla_installations")
         .select("id")
         .eq("merchant_id", merchantId)
         .maybeSingle();
+
       if (inst.error) throw inst.error;
       installationIdForEvent = inst.data?.id ?? null;
     }
 
-    // Create webhook_events row if we have installation_id
     if (installationIdForEvent) {
       const evIns = await sb
         .from("webhook_events")
         .insert({
           installation_id: installationIdForEvent,
-          event_type: body.event,
+          event_type: event,
           event_id: body.id ? String(body.id) : null,
           payload: body as any,
           status: "pending",
         })
         .select("id")
         .single();
+
       if (evIns.error) throw evIns.error;
       webhookEventId = evIns.data.id as string;
     }
 
-    // 4) uninstall
-    if (body.event === "app.uninstalled") {
+    if (event === "app.uninstalled") {
       if (merchantId) {
-        const upd = await sb
+        const instGet = await sb
           .from("salla_installations")
-          .update({
-            status: "revoked",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("merchant_id", merchantId);
-        if (upd.error) throw upd.error;
+          .select("id, tenant_id")
+          .eq("merchant_id", merchantId)
+          .maybeSingle();
+
+        if (instGet.error) throw instGet.error;
+
+        if (instGet.data?.id) {
+          const upd = await sb
+            .from("salla_installations")
+            .update({
+              status: "revoked",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", instGet.data.id);
+
+          if (upd.error) throw upd.error;
+
+          const subUp = await sb.from("app_subscriptions").upsert(
+            {
+              tenant_id: instGet.data.tenant_id,
+              installation_id: instGet.data.id,
+              merchant_id: merchantId,
+              status: "uninstalled",
+              uninstalled_at:
+                toIsoDate(body.created_at) ?? new Date().toISOString(),
+              last_event: event,
+              raw: body as any,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "tenant_id" },
+          );
+
+          if (subUp.error) throw subUp.error;
+        }
       }
 
       if (webhookEventId) {
@@ -217,115 +366,219 @@ export async function POST(req: NextRequest) {
             processed_at: new Date().toISOString(),
           })
           .eq("id", webhookEventId);
+
         if (evUpd.error) throw evUpd.error;
       }
 
       return NextResponse.json({ ok: true });
     }
 
-    // 5) authorize
-    const accessToken = body.data?.access_token;
-    const refreshToken = body.data?.refresh_token;
-    const expires = body.data?.expires;
-    const scope = body.data?.scope;
+    if (event === "app.store.authorize") {
+      const accessToken = body.data?.access_token;
+      const refreshToken = body.data?.refresh_token;
+      const expires = body.data?.expires;
+      const scope = body.data?.scope;
 
-    if (!merchantId || !accessToken) {
-      return NextResponse.json(
-        { ok: false, error: "Missing merchant/token" },
-        { status: 400 },
-      );
-    }
+      if (!merchantId || !accessToken) {
+        return NextResponse.json(
+          { ok: false, error: "Missing merchant/token" },
+          { status: 400 },
+        );
+      }
 
-    // A) get/create installation + tenant
-    const instExisting = await sb
-      .from("salla_installations")
-      .select("id, tenant_id, merchant_id, store_name, status")
-      .eq("merchant_id", merchantId)
-      .maybeSingle();
-    if (instExisting.error) throw instExisting.error;
-
-    let tenantId: string;
-    let installationId: string;
-
-    if (instExisting.data) {
-      tenantId = instExisting.data.tenant_id;
-      installationId = instExisting.data.id;
-    } else {
-      const tenantName = `Store ${merchantId}`;
-
-      const tIns = await sb
-        .from("tenants")
-        .insert({ name: tenantName })
-        .select("id")
-        .single();
-      if (tIns.error) throw tIns.error;
-      tenantId = tIns.data.id as string;
-
-      const instIns = await sb
+      const instExisting = await sb
         .from("salla_installations")
-        .insert({
-          tenant_id: tenantId,
-          merchant_id: merchantId,
-          store_name: tenantName,
-          status: "active",
-          updated_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-      if (instIns.error) throw instIns.error;
-      installationId = instIns.data.id as string;
-    }
+        .select("id, tenant_id, merchant_id, store_name, status")
+        .eq("merchant_id", merchantId)
+        .maybeSingle();
 
-    // If we didn't log webhook_events earlier, log now (after creating installation)
-    if (!webhookEventId) {
-      const evIns = await sb
-        .from("webhook_events")
-        .insert({
+      if (instExisting.error) throw instExisting.error;
+
+      let tenantId: string;
+      let installationId: string;
+
+      if (instExisting.data) {
+        tenantId = instExisting.data.tenant_id;
+        installationId = instExisting.data.id;
+      } else {
+        const tenantName = `Store ${merchantId}`;
+
+        const tIns = await sb
+          .from("tenants")
+          .insert({ name: tenantName })
+          .select("id")
+          .single();
+
+        if (tIns.error) throw tIns.error;
+        tenantId = tIns.data.id as string;
+
+        const instIns = await sb
+          .from("salla_installations")
+          .insert({
+            tenant_id: tenantId,
+            merchant_id: merchantId,
+            store_name: tenantName,
+            status: "active",
+            updated_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+
+        if (instIns.error) throw instIns.error;
+        installationId = instIns.data.id as string;
+      }
+
+      if (!webhookEventId) {
+        const evIns = await sb
+          .from("webhook_events")
+          .insert({
+            installation_id: installationId,
+            event_type: event,
+            event_id: body.id ? String(body.id) : null,
+            payload: body as any,
+            status: "pending",
+          })
+          .select("id")
+          .single();
+
+        if (evIns.error) throw evIns.error;
+        webhookEventId = evIns.data.id as string;
+      }
+
+      const tokUp = await sb.from("salla_tokens").upsert(
+        {
           installation_id: installationId,
-          event_type: body.event,
-          event_id: body.id ? String(body.id) : null,
-          payload: body as any,
-          status: "pending",
-        })
-        .select("id")
-        .single();
-      if (evIns.error) throw evIns.error;
-      webhookEventId = evIns.data.id as string;
-    }
+          access_token: String(accessToken),
+          refresh_token: refreshToken ? String(refreshToken) : null,
+          access_expires_at: toExpiresAt(expires),
+          scopes: normalizeScopes(scope),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "installation_id" },
+      );
 
-    // B) upsert tokens
-    const tokUp = await sb.from("salla_tokens").upsert(
-      {
-        installation_id: installationId,
-        access_token: String(accessToken),
-        refresh_token: refreshToken ? String(refreshToken) : null,
-        access_expires_at: toExpiresAt(expires),
-        scopes: normalizeScopes(scope),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "installation_id" },
-    );
-    if (tokUp.error) throw tokUp.error;
+      if (tokUp.error) throw tokUp.error;
 
-    // C) if owner already linked, stop here (no email/user creation)
-    const owner = await sb
-      .from("tenant_members")
-      .select("user_id")
-      .eq("tenant_id", tenantId)
-      .eq("role", "owner")
-      .limit(1)
-      .maybeSingle();
-    if (owner.error) throw owner.error;
+      const owner = await sb
+        .from("tenant_members")
+        .select("user_id")
+        .eq("tenant_id", tenantId)
+        .eq("role", "owner")
+        .limit(1)
+        .maybeSingle();
 
-    if (owner.data?.user_id) {
-      const instUpd = await sb
+      if (owner.error) throw owner.error;
+
+      if (owner.data?.user_id) {
+        const instUpd = await sb
+          .from("salla_installations")
+          .update({
+            status: "active",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", installationId);
+
+        if (instUpd.error) throw instUpd.error;
+
+        const subEnsure = await sb.from("app_subscriptions").upsert(
+          {
+            tenant_id: tenantId,
+            installation_id: installationId,
+            merchant_id: merchantId,
+            status: "active",
+            last_event: event,
+            raw: body as any,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "tenant_id" },
+        );
+
+        if (subEnsure.error) throw subEnsure.error;
+
+        if (webhookEventId) {
+          const evUpd = await sb
+            .from("webhook_events")
+            .update({
+              status: "processed",
+              processed_at: new Date().toISOString(),
+            })
+            .eq("id", webhookEventId);
+
+          if (evUpd.error) throw evUpd.error;
+        }
+
+        return NextResponse.json({
+          ok: true,
+          merchantId,
+          tenantId,
+          installationId,
+          linkedOwnerUserId: owner.data.user_id,
+          note: "owner_already_linked",
+        });
+      }
+
+      const storeUser = await getBestEmailFromSalla(String(accessToken));
+      const email = storeUser.email.trim().toLowerCase();
+      const name = storeUser.name ?? null;
+
+      const updInst = await sb
         .from("salla_installations")
         .update({
           status: "active",
           updated_at: new Date().toISOString(),
-        })
+          store_name: name ?? null,
+          owner_email: email,
+        } as any)
         .eq("id", installationId);
-      if (instUpd.error) throw instUpd.error;
+
+      if (updInst.error) throw updInst.error;
+
+      const { user, isNewUser } = await getOrCreateUserByEmail(sb, email, name);
+      const userId = user.id;
+
+      const profUp = await sb.from("profiles").upsert(
+        {
+          id: userId,
+          email,
+          full_name: name,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      );
+
+      if (profUp.error) {
+        console.log(
+          "[salla:webhook] profiles upsert error",
+          profUp.error.message,
+        );
+      }
+
+      const tmUp = await sb.from("tenant_members").upsert(
+        {
+          tenant_id: tenantId,
+          user_id: userId,
+          role: "owner",
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: "tenant_id,user_id" },
+      );
+
+      if (tmUp.error) throw tmUp.error;
+
+      const subEnsure = await sb.from("app_subscriptions").upsert(
+        {
+          tenant_id: tenantId,
+          installation_id: installationId,
+          merchant_id: merchantId,
+          status: "active",
+          last_event: event,
+          raw: body as any,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "tenant_id" },
+      );
+
+      if (subEnsure.error) throw subEnsure.error;
 
       if (webhookEventId) {
         const evUpd = await sb
@@ -335,7 +588,16 @@ export async function POST(req: NextRequest) {
             processed_at: new Date().toISOString(),
           })
           .eq("id", webhookEventId);
+
         if (evUpd.error) throw evUpd.error;
+      }
+
+      if (isNewUser) {
+        try {
+          await sendWelcomeEmail(email);
+        } catch (emailError) {
+          console.error("[salla:webhook] welcome email failed", emailError);
+        }
       }
 
       return NextResponse.json({
@@ -343,96 +605,85 @@ export async function POST(req: NextRequest) {
         merchantId,
         tenantId,
         installationId,
-        linkedOwnerUserId: owner.data.user_id,
-        note: "owner_already_linked",
+        email,
+        note: isNewUser
+          ? "linked_owner_with_welcome_email"
+          : "linked_owner_existing_user",
       });
     }
 
-    // D) first-time: fetch email + store name
-    const storeUser = await getBestEmailFromSalla(String(accessToken));
-    const email = storeUser.email.trim().toLowerCase();
-    const name = storeUser.name ?? null;
-
-    // Update installation with owner_email/store_name
-    const updInst = await sb
-      .from("salla_installations")
-      .update({
-        status: "active",
-        updated_at: new Date().toISOString(),
-        store_name: name ?? null,
-        owner_email: email,
-      } as any)
-      .eq("id", installationId);
-    if (updInst.error) throw updInst.error;
-
-    // E) create/find user (NO invite)
-    const { user, isNewUser } = await getOrCreateUserByEmail(sb, email, name);
-    const userId = user.id;
-
-    // F) upsert profile (non-blocking)
-    const profUp = await sb.from("profiles").upsert(
-      {
-        id: userId,
-        email,
-        full_name: name,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" },
-    );
-    if (profUp.error) {
-      console.log(
-        "[salla:webhook] profiles upsert error",
-        profUp.error.message,
-      );
-    }
-
-    // G) link tenant membership (owner) - idempotent
-    const tmUp = await sb.from("tenant_members").upsert(
-      {
-        tenant_id: tenantId,
-        user_id: userId,
-        role: "owner",
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: "tenant_id,user_id" },
-    );
-    if (tmUp.error) throw tmUp.error;
-
-    // H) mark webhook_events processed
-    if (webhookEventId) {
-      const evUpd = await sb
-        .from("webhook_events")
-        .update({
-          status: "processed",
-          processed_at: new Date().toISOString(),
-        })
-        .eq("id", webhookEventId);
-      if (evUpd.error) throw evUpd.error;
-    }
-
-    // I) send welcome email فقط إذا المستخدم جديد
-    if (isNewUser) {
-      try {
-        await sendWelcomeEmail(email);
-      } catch (emailError) {
-        console.error("[salla:webhook] welcome email failed", emailError);
+    if (isSubscriptionEvent(event)) {
+      if (!merchantId) {
+        return NextResponse.json(
+          { ok: false, error: "Missing merchant" },
+          { status: 400 },
+        );
       }
+
+      const instExisting = await sb
+        .from("salla_installations")
+        .select("id, tenant_id, merchant_id")
+        .eq("merchant_id", merchantId)
+        .maybeSingle();
+
+      if (instExisting.error) throw instExisting.error;
+
+      if (!instExisting.data?.id || !instExisting.data?.tenant_id) {
+        return NextResponse.json(
+          { ok: false, error: "Installation not found for merchant" },
+          { status: 404 },
+        );
+      }
+
+      await upsertSubscriptionFromEvent({
+        sb,
+        tenantId: instExisting.data.tenant_id,
+        installationId: instExisting.data.id,
+        merchantId,
+        body,
+      });
+
+      if (!webhookEventId) {
+        const evIns = await sb
+          .from("webhook_events")
+          .insert({
+            installation_id: instExisting.data.id,
+            event_type: event,
+            event_id: body.id ? String(body.id) : null,
+            payload: body as any,
+            status: "pending",
+          })
+          .select("id")
+          .single();
+
+        if (evIns.error) throw evIns.error;
+        webhookEventId = evIns.data.id as string;
+      }
+
+      if (webhookEventId) {
+        const evUpd = await sb
+          .from("webhook_events")
+          .update({
+            status: "processed",
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", webhookEventId);
+
+        if (evUpd.error) throw evUpd.error;
+      }
+
+      return NextResponse.json({
+        ok: true,
+        merchantId,
+        event,
+        note: "subscription_event_processed",
+      });
     }
 
-    return NextResponse.json({
-      ok: true,
-      merchantId,
-      tenantId,
-      installationId,
-      email,
-      note: isNewUser
-        ? "linked_owner_with_welcome_email"
-        : "linked_owner_existing_user",
-    });
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("[salla:webhook] error", e);
 
-    // best-effort: mark webhook_events failed
     if (webhookEventId) {
       try {
         await sb

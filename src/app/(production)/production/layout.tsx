@@ -1,8 +1,8 @@
 // FILE: src/app/(production)/production/layout.tsx
-
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ProductionShell } from "@/components/production/production-shell";
+import { requireActiveSubscription } from "@/lib/billing/requireActiveSubscription";
 
 export default async function ProductionLayout({
   children,
@@ -30,6 +30,12 @@ export default async function ProductionLayout({
   if (membershipError || !membership?.tenant_id) {
     redirect("/production-login");
   }
+
+  await requireActiveSubscription({
+    sb: supabase,
+    tenantId: membership.tenant_id,
+    redirectTo: "/production-login",
+  });
 
   const { data: employee, error: employeeError } = await supabase
     .from("employees")

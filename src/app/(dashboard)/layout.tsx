@@ -15,6 +15,7 @@ import OnboardingPath from "@/components/onboarding/onboarding-path";
 
 import { requireUser } from "@/lib/auth/requireUser";
 import { requireTenant } from "@/lib/tenant/requireTenant";
+import { requireActiveSubscription } from "@/lib/billing/requireActiveSubscription";
 
 export default async function DashboardLayout({
   children,
@@ -26,6 +27,12 @@ export default async function DashboardLayout({
 
   const tenant = await requireTenant({ sb, userId: user.id });
   if (!tenant?.tenantId) return notFound();
+
+  await requireActiveSubscription({
+    sb,
+    tenantId: tenant.tenantId,
+    redirectTo: "/login",
+  });
 
   const allowedRoles = ["owner", "admin", "manager"];
 
@@ -75,9 +82,7 @@ export default async function DashboardLayout({
           </header>
 
           <main className="min-w-0 flex flex-1 flex-col gap-6 p-4">
-            {/* شريط مسار الانطلاقة */}
             <OnboardingPath />
-
             {children}
           </main>
 
