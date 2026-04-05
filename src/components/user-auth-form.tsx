@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Mail, ShieldCheck, X } from "lucide-react";
+import { AlertTriangle, Loader2, Mail, ShieldCheck, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,21 @@ function mapAuthError(message?: string) {
   return "حدث خطأ أثناء التحقق، حاول مرة أخرى";
 }
 
+function mapSubscriptionStatus(status?: string | null) {
+  switch (String(status || "").toLowerCase()) {
+    case "expired":
+      return "منتهي";
+    case "canceled":
+      return "ملغي";
+    case "uninstalled":
+      return "محذوف";
+    case "inactive":
+      return "غير مفعّل";
+    default:
+      return "موقوف";
+  }
+}
+
 export function UserAuthForm() {
   const router = useRouter();
   const supabase = useMemo(() => supabaseBrowser(), []);
@@ -84,6 +99,8 @@ export function UserAuthForm() {
     Array.from({ length: OTP_LENGTH }, () => ""),
   );
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState("");
 
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -232,6 +249,48 @@ export function UserAuthForm() {
     inputRefs.current[nextFocusIndex]?.focus();
   }
 
+  async function checkSubscriptionAfterLogin() {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { allowed: false, status: "inactive" };
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+      .from("tenant_members")
+      .select("tenant_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (membershipError) {
+      throw membershipError;
+    }
+
+    // إذا ما كان عنده tenant نخليه يكمل كما هو
+    if (!membership?.tenant_id) {
+      return { allowed: true, status: null };
+    }
+
+    const { data: subscription, error: subscriptionError } = await supabase
+      .from("app_subscriptions")
+      .select("status")
+      .eq("tenant_id", membership.tenant_id)
+      .maybeSingle();
+
+    if (subscriptionError) {
+      throw subscriptionError;
+    }
+
+    const status = String(subscription?.status || "inactive");
+    const allowed = status === "active" || status === "trialing";
+
+    return { allowed, status };
+  }
+
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
 
@@ -247,6 +306,8 @@ export function UserAuthForm() {
       setSending(true);
       setError("");
       setSuccess("");
+      setSubscriptionDialogOpen(false);
+      setSubscriptionStatus("");
 
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
@@ -303,6 +364,19 @@ export function UserAuthForm() {
 
       if (error) throw error;
 
+      const subscriptionCheck = await checkSubscriptionAfterLogin();
+
+      if (!subscriptionCheck.allowed) {
+        await supabase.auth.signOut();
+
+        setDialogOpen(false);
+        resetOtp();
+        setSuccess("");
+        setSubscriptionStatus(mapSubscriptionStatus(subscriptionCheck.status));
+        setSubscriptionDialogOpen(true);
+        return;
+      }
+
       setDialogOpen(false);
       resetOtp();
       setSuccess("");
@@ -329,6 +403,8 @@ export function UserAuthForm() {
       setSending(true);
       setError("");
       setSuccess("");
+      setSubscriptionDialogOpen(false);
+      setSubscriptionStatus("");
 
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
@@ -372,6 +448,8 @@ export function UserAuthForm() {
                 setEmail(e.target.value);
                 setError("");
                 setSuccess("");
+                setSubscriptionDialogOpen(false);
+                setSubscriptionStatus("");
               }}
               className="pr-10"
               disabled={sending || verifying}
@@ -529,6 +607,68 @@ export function UserAuthForm() {
                 </Button>
               </div>
             </form>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={subscriptionDialogOpen}
+        onOpenChange={setSubscriptionDialogOpen}
+      >
+        <DialogContent
+          dir="rtl"
+          className="w-[calc(100%-24px)] max-w-[560px] rounded-3xl border-0 p-0 shadow-2xl [&>button]:hidden"
+        >
+          <div className="p-6 sm:p-8">
+            <DialogHeader className="space-y-4 text-right">
+              <div className="flex flex-row-reverse items-start justify-between">
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionDialogOpen(false)}
+                  className="rounded-full p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  aria-label="إغلاق"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+
+                <div className="flex flex-row-reverse items-center gap-2">
+                  <DialogTitle className="text-xl font-bold sm:text-2xl">
+                    اشتراك التطبيق متوقف
+                  </DialogTitle>
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                </div>
+              </div>
+
+              <DialogDescription className="space-y-3 text-right">
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm leading-7 text-red-700 sm:text-base">
+                  لا يمكن الدخول إلى النظام حاليًا لأن حالة اشتراك التطبيق:
+                  <span className="mx-1 font-bold">{subscriptionStatus}</span>
+                </div>
+
+                <div className="text-sm leading-8 text-slate-700 sm:text-base">
+                  يرجى تجديد الاشتراك عن طريق:
+                  <span className="mx-1 font-bold text-slate-900">
+                    تطبيقاتي في منصة سلة
+                  </span>
+                  ثم إعادة المحاولة.
+                </div>
+
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-800">
+                  إذا كنت صاحب المتجر، ادخل إلى منصة سلة ثم افتح تطبيقاتك وقم
+                  بتجديد الاشتراك أو تفعيله مرة أخرى.
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-6">
+              <Button
+                type="button"
+                className="h-12 w-full rounded-2xl"
+                onClick={() => setSubscriptionDialogOpen(false)}
+              >
+                فهمت
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
