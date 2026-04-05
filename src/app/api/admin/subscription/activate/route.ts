@@ -18,13 +18,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.redirect(new URL("/admin/login", req.url));
     }
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from("profiles")
       .select("is_super_admin")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (profileError || !profile?.is_super_admin) {
+    if (!profile?.is_super_admin) {
       return NextResponse.redirect(new URL("/", req.url));
     }
 
@@ -45,27 +45,24 @@ export async function POST(req: NextRequest) {
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
-    if (installationError) {
-      throw installationError;
-    }
-
-    const payload: Record<string, any> = {
-      tenant_id: tenantId,
-      status: "active",
-      last_event: "admin.subscription.activate",
-      updated_at: new Date().toISOString(),
-    };
-
-    if (installation?.id) payload.installation_id = installation.id;
-    if (installation?.merchant_id) payload.merchant_id = installation.merchant_id;
+    if (installationError) throw installationError;
 
     const { error: subError } = await admin
       .from("app_subscriptions")
-      .upsert(payload, { onConflict: "tenant_id" });
+      .upsert(
+        {
+          tenant_id: tenantId,
+          installation_id: installation?.id ?? null,
+          merchant_id: installation?.merchant_id ?? null,
+          status: "active",
+          plan_name: "manual",
+          last_event: "admin.subscription.activate",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "tenant_id" },
+      );
 
-    if (subError) {
-      throw subError;
-    }
+    if (subError) throw subError;
 
     return NextResponse.redirect(
       new URL("/admin/dashboard?success=subscription_activated", req.url),

@@ -98,8 +98,14 @@ export default async function AdminDashboardPage() {
 
   const rows =
     tenants?.map((tenant: any) => {
-      const installation = tenant.salla_installations?.[0] ?? null;
-      const subscription = tenant.app_subscriptions?.[0] ?? null;
+      const installation = Array.isArray(tenant.salla_installations)
+        ? tenant.salla_installations[0] ?? null
+        : tenant.salla_installations ?? null;
+
+      const subscription = Array.isArray(tenant.app_subscriptions)
+        ? tenant.app_subscriptions[0] ?? null
+        : tenant.app_subscriptions ?? null;
+
       const status = subscription?.status || "inactive";
 
       return {
