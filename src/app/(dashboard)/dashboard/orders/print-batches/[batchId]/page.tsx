@@ -596,81 +596,88 @@ export default async function Page({
       className="print-root min-h-screen bg-neutral-100 text-black"
       dir="rtl"
     >
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @page {
-              size: A4 portrait;
-              margin: 5mm;
-            }
+     <style
+  dangerouslySetInnerHTML={{
+    __html: `
+      @page {
+        size: A4 portrait;
+        margin: 5mm;
+      }
 
-            @media print {
-              html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #fff !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
+      @media print {
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+          overflow: hidden !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
 
-              aside,
-              header,
-              footer,
-              nav,
-              .no-print {
-                display: none !important;
-              }
+        body * {
+          visibility: hidden !important;
+        }
 
-              main {
-                padding: 0 !important;
-                margin: 0 !important;
-              }
+        .print-root,
+        .print-root * {
+          visibility: visible !important;
+        }
 
-              .print-root {
-                background: #fff !important;
-                min-height: auto !important;
-              }
+        .print-root {
+          position: fixed !important;
+          inset: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+          z-index: 2147483647 !important;
+          overflow: hidden !important;
+        }
 
-              .print-wrap {
-                max-width: none !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-              }
+        .no-print {
+          display: none !important;
+        }
 
-              .print-page {
-                 width: 200mm !important;
-  height: 286mm !important;
-  overflow: hidden !important;
-   break-inside: avoid !important;
-  page-break-inside: avoid !important;
-                margin: 0 auto !important;
-                padding: 0 !important;
-                background: #fff !important;
-                box-shadow: none !important;
-                border: 0 !important;
-                break-after: page;
-                page-break-after: always;
-              }
+        .print-wrap {
+          width: 200mm !important;
+          max-width: 200mm !important;
+          margin: 0 auto !important;
+          padding: 0 !important;
+        }
 
-              .print-page:last-child {
-                break-after: auto;
-                page-break-after: auto;
-              }
+        .print-page {
+          width: 200mm !important;
+          min-height: 286mm !important;
+          margin: 0 auto !important;
+          padding: 0 !important;
+          background: #fff !important;
+          box-shadow: none !important;
+          border: 0 !important;
+          break-after: page !important;
+          page-break-after: always !important;
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
 
-              .print-card {
-                break-inside: avoid !important;
-                page-break-inside: avoid !important;
-                box-shadow: none !important;
-              }
+        .print-page:last-child {
+          break-after: auto !important;
+          page-break-after: auto !important;
+        }
 
-              .print-card img {
-                max-height: 100%;
-              }
-            }
-          `,
-        }}
-      />
+        .print-card {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+          box-shadow: none !important;
+        }
+
+        .print-card img {
+          max-height: 100% !important;
+        }
+      }
+    `,
+  }}
+/>
 
       <div className="no-print sticky top-0 z-10 border-b bg-white px-6 py-4">
         <div className="flex items-center justify-between">
