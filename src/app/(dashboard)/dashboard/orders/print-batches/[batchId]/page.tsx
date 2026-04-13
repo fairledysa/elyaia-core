@@ -788,39 +788,36 @@ export default async function Page({
                       )}
                     </div>
 
-                     <div className="flex w-[132px] shrink-0 flex-col items-center justify-between">
-  <div className="flex h-[110px] w-[110px] items-center justify-center overflow-hidden rounded-xl border bg-neutral-50">
-    {card.imageUrl ? (
-      <img
-        src={card.imageUrl}
-        alt={card.itemName || "product"}
-        className="h-full w-full object-cover"
-      />
-    ) : (
-      <div className="text-center text-xs text-neutral-400">
-        لا توجد صورة
-      </div>
-    )}
-  </div>
+                    <div className="flex w-[132px] shrink-0 flex-col items-center justify-between">
+                      <div className="flex h-[110px] w-[110px] items-center justify-center overflow-hidden rounded-xl border bg-neutral-50">
+                        {card.imageUrl ? (
+                          <img
+                            src={card.imageUrl}
+                            alt={card.itemName || "product"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-center text-xs text-neutral-400">
+                            لا توجد صورة
+                          </div>
+                        )}
+                      </div>
 
-  <div className="flex flex-col items-center gap-1">
-    <div className="flex h-[112px] w-[112px] items-center justify-center rounded-xl border bg-white p-2">
-      <img
-        alt={card.qrCode}
-        src={`https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(
-          card.qrCode,
-        )}`}
-        className="h-full w-full object-contain [image-rendering:pixelated]"
-        loading="eager"
-        decoding="sync"
-      />
-    </div>
-
-    <div className="max-w-[112px] break-all text-center text-[8px] leading-[1.1] text-neutral-500">
+                      <div className="flex h-[112px] w-[112px] items-center justify-center rounded-xl border bg-white p-2">
+                        <img
+                          alt={card.qrCode}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(
+                            card.qrCode,
+                          )}`}
+                          className="h-full w-full object-contain [image-rendering:pixelated]"
+                          loading="eager"
+                          decoding="sync"
+                        />
+                      </div>
+                      <div className="max-w-[112px] break-all text-center text-[8px] leading-[1.1] text-neutral-500">
       {card.qrCode}
     </div>
-  </div>
-</div>
+                    </div>
                   </div>
                 </div>
               ))}
