@@ -597,47 +597,77 @@ export default async function Page({
       dir="rtl"
     >
       <style
-  dangerouslySetInnerHTML={{
-    __html: `
-      @page {
-        size: A4 portrait;
-        margin: 5mm;
-      }
+        dangerouslySetInnerHTML={{
+          __html: `
+            @page {
+              size: A4 portrait;
+              margin: 5mm;
+            }
 
-      @media print {
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #fff !important;
-        }
+            @media print {
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
 
-        body * {
-          visibility: hidden !important;
-        }
+              aside,
+              header,
+              footer,
+              nav,
+              .no-print {
+                display: none !important;
+              }
 
-        .print-root,
-        .print-root * {
-          visibility: visible !important;
-        }
+              main {
+                padding: 0 !important;
+                margin: 0 !important;
+              }
 
-        .print-root {
-          position: absolute !important;
-          inset: 0 !important;
-          width: 100% !important;
-          background: #fff !important;
-        }
+              .print-root {
+                background: #fff !important;
+                min-height: auto !important;
+              }
 
-        .no-print {
-          display: none !important;
-        }
+              .print-wrap {
+                max-width: none !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+              }
 
-        .print-page {
-          break-after: page;
-        }
-      }
-    `,
-  }}
-/>
+              .print-page {
+                width: 200mm !important;
+                min-height: 286mm !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+                background: #fff !important;
+                box-shadow: none !important;
+                border: 0 !important;
+                break-after: page;
+                page-break-after: always;
+              }
+
+              .print-page:last-child {
+                break-after: auto;
+                page-break-after: auto;
+              }
+
+              .print-card {
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
+                box-shadow: none !important;
+              }
+
+              .print-card img {
+                max-height: 100%;
+              }
+            }
+          `,
+        }}
+      />
 
       <div className="no-print sticky top-0 z-10 border-b bg-white px-6 py-4">
         <div className="flex items-center justify-between">
@@ -784,9 +814,7 @@ export default async function Page({
                           decoding="sync"
                         />
                       </div>
-                      <div className="max-w-[112px] break-all text-center text-[8px] leading-[1.1] text-neutral-500">
-      {card.qrCode}
-    </div>
+                       card.qrCode
                     </div>
                   </div>
                 </div>
