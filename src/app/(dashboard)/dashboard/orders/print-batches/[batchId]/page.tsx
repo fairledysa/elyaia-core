@@ -639,8 +639,9 @@ export default async function Page({
               }
 
               .print-page {
-                width: 200mm !important;
-                min-height: 286mm !important;
+                 width: 200mm !important;
+  height: 286mm !important;
+  overflow: hidden !important;
                 margin: 0 auto !important;
                 padding: 0 !important;
                 background: #fff !important;
@@ -699,7 +700,7 @@ export default async function Page({
               {page.map((card) => (
                 <div
                   key={card.productionItemId}
-                  className="print-card flex h-[122mm] flex-col overflow-hidden rounded-2xl border border-neutral-300 bg-white"
+                 className="print-card flex h-[138mm] flex-col overflow-hidden rounded-2xl border border-neutral-300 bg-white"
                 >
                   <div className="flex items-start justify-between border-b px-4 py-3">
                     <div className="text-right">
@@ -814,7 +815,9 @@ export default async function Page({
                           decoding="sync"
                         />
                       </div>
-                       card.qrCode
+                      <div className="max-w-[112px] truncate text-center text-[8px] text-neutral-500" dir="ltr">
+  {card.qrCode}
+</div>
                     </div>
                   </div>
                 </div>
@@ -834,4 +837,3 @@ export default async function Page({
     </div>
   );
 }
- 
