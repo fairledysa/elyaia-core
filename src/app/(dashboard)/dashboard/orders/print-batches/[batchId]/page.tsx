@@ -642,6 +642,8 @@ export default async function Page({
                  width: 200mm !important;
   height: 286mm !important;
   overflow: hidden !important;
+   break-inside: avoid !important;
+  page-break-inside: avoid !important;
                 margin: 0 auto !important;
                 padding: 0 !important;
                 background: #fff !important;
@@ -815,7 +817,7 @@ export default async function Page({
                           decoding="sync"
                         />
                       </div>
-                      <div className="max-w-[112px] truncate text-center text-[8px] text-neutral-500" dir="ltr">
+                      <div className="  truncate text-center text-[8px] text-neutral-500" dir="ltr">
   {card.qrCode}
 </div>
                     </div>
