@@ -605,14 +605,14 @@ export default async function Page({
       }
 
       @media print {
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #fff !important;
-          overflow: hidden !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
+    html, body {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #fff !important;
+  overflow: visible !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
 
         body * {
           visibility: hidden !important;
