@@ -623,17 +623,16 @@ export default async function Page({
           visibility: visible !important;
         }
 
-        .print-root {
-          position: fixed !important;
-          inset: 0 !important;
-          width: 100vw !important;
-          height: 100vh !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #fff !important;
-          z-index: 2147483647 !important;
-          overflow: hidden !important;
-        }
+       .print-root {
+  position: relative !important;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #fff !important;
+  z-index: 2147483647 !important;
+  overflow: visible !important;
+}
 
         .no-print {
           display: none !important;
