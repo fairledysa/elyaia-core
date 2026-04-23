@@ -17,12 +17,6 @@ function getHeader(req: NextRequest, name: string) {
   return req.headers.get(name) || req.headers.get(name.toLowerCase()) || "";
 }
 
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing ${name}`);
-  return v;
-}
-
 function toExpiresAt(expires: any) {
   if (expires == null) return null;
   const n = typeof expires === "number" ? expires : Number(expires);
@@ -259,12 +253,19 @@ export async function POST(req: NextRequest) {
   const sb = createSupabaseAdminClient();
 
   const sentAuth = getHeader(req, "authorization");
-  const expected = mustEnv("SALLA_WEBHOOK_SECRET");
+  const expected = process.env.SALLA_WEBHOOK_SECRET || "";
+
+  if (!expected) {
+    console.error("[salla:webhook] Missing SALLA_WEBHOOK_SECRET");
+    return NextResponse.json({ ok: true });
+  }
+
   if (sentAuth !== expected) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized webhook" },
-      { status: 401 },
-    );
+    console.warn("[salla:webhook] Unauthorized webhook", {
+      sentAuth,
+      expected,
+    });
+    return NextResponse.json({ ok: true });
   }
 
   let installationIdForEvent: string | null = null;
